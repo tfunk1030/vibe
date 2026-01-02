@@ -14,6 +14,41 @@ import {
 const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY;
 const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
+// Multi-model fallback configuration for resilience
+const DOMINO_MODELS = [
+  'openai/gpt-5.2',           // Primary - best for pip counting
+  'anthropic/claude-sonnet-4', // Fallback 1
+  'google/gemini-2.5-flash',   // Fallback 2
+];
+
+const GRID_MODELS = [
+  'google/gemini-2.5-flash',    // Primary - best for structured grid extraction
+  'openai/gpt-5.2',            // Fallback 1
+  'anthropic/claude-sonnet-4', // Fallback 2
+];
+
+// Delay between retry attempts (exponential backoff)
+const RETRY_DELAYS = [0, 1000, 2000]; // ms
+
+// Confidence scoring types
+export interface ExtractionConfidence {
+  dominoPipsConfidence: number;    // 0-1
+  gridStructureConfidence: number; // 0-1
+  regionBoundaryConfidence: number;// 0-1
+  constraintReadConfidence: number;// 0-1
+
+  lowConfidenceAreas: {
+    type: 'domino' | 'region' | 'constraint';
+    index: number;
+    reason: string;
+  }[];
+
+  warnings: string[];
+}
+
+// Helper to delay execution
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 interface ExtractedCell {
   row: number;
   col: number;
@@ -54,6 +89,156 @@ export interface GridSizeHint {
   cols: number;
   rows: number;
   dominoCount: number;
+}
+
+// ==========================================
+// VALIDATION HELPERS
+// ==========================================
+
+// Validate and clamp domino pip values to 0-6 range
+function validateDominoPips(dominoes: ExtractedDomino[]): ExtractedDomino[] {
+  return dominoes.map(d => ({
+    pips: [
+      Math.max(0, Math.min(6, Math.round(d.pips[0] ?? 0))),
+      Math.max(0, Math.min(6, Math.round(d.pips[1] ?? 0))),
+    ] as [number, number]
+  }));
+}
+
+// Detect suspicious duplicate dominoes that may indicate misread pips
+function detectSuspiciousDuplicates(dominoes: ExtractedDomino[]): string[] {
+  const seen = new Map<string, number>();
+  const warnings: string[] = [];
+
+  for (const d of dominoes) {
+    const sorted = [...d.pips].sort((a, b) => a - b);
+    const key = `${sorted[0]}-${sorted[1]}`;
+    const count = (seen.get(key) || 0) + 1;
+    seen.set(key, count);
+
+    // Standard domino sets typically have only one of each combination
+    // Having 3+ of the same domino is very suspicious
+    if (count >= 3) {
+      warnings.push(`Suspicious: domino [${d.pips[0]},${d.pips[1]}] appears ${count} times - may be misread`);
+    }
+  }
+
+  return warnings;
+}
+
+// Analyze domino set for common misread patterns
+function analyzeDominoConfidence(dominoes: ExtractedDomino[]): {
+  confidence: number;
+  issues: { index: number; reason: string }[];
+} {
+  const issues: { index: number; reason: string }[] = [];
+  let totalConfidence = 1.0;
+
+  // Check for common misread patterns
+  for (let i = 0; i < dominoes.length; i++) {
+    const d = dominoes[i];
+    const [p1, p2] = d.pips;
+
+    // 5 and 6 are commonly confused (both have many dots)
+    if ((p1 === 5 || p1 === 6) && (p2 === 5 || p2 === 6)) {
+      issues.push({ index: i, reason: '5/6 pips can be confused - verify manually' });
+      totalConfidence -= 0.05;
+    }
+
+    // 0 (blank) sometimes misread as having pips
+    if (p1 === 0 || p2 === 0) {
+      issues.push({ index: i, reason: 'Blank (0) side detected - verify no faint pips' });
+      totalConfidence -= 0.02;
+    }
+  }
+
+  // Check for duplicates
+  const duplicateWarnings = detectSuspiciousDuplicates(dominoes);
+  if (duplicateWarnings.length > 0) {
+    totalConfidence -= duplicateWarnings.length * 0.1;
+  }
+
+  return {
+    confidence: Math.max(0, Math.min(1, totalConfidence)),
+    issues,
+  };
+}
+
+// Verify ASCII grid matches region data
+function verifyAsciiGridConsistency(
+  gridData: GridExtractionResponse
+): { valid: boolean; issues: string[]; confidence: number } {
+  const issues: string[] = [];
+  let confidence = 1.0;
+
+  const ascii = gridData.ascii_grid;
+  if (!ascii || ascii.length === 0) {
+    return { valid: true, issues: ['No ASCII grid provided for verification'], confidence: 0.7 };
+  }
+
+  // Check row count matches height
+  if (ascii.length !== gridData.height) {
+    issues.push(`ASCII grid has ${ascii.length} rows, expected ${gridData.height}`);
+    confidence -= 0.2;
+  }
+
+  // Build grid from regions for comparison
+  const regionGrid: string[][] = Array(gridData.height)
+    .fill(null)
+    .map(() => Array(gridData.width).fill('.'));
+
+  // Mark holes
+  for (const holeCoord of gridData.holes || []) {
+    const cell = parseCoordinate(holeCoord);
+    if (cell && cell.row < gridData.height && cell.col < gridData.width) {
+      regionGrid[cell.row][cell.col] = '#';
+    }
+  }
+
+  // Mark regions
+  for (const region of gridData.regions || []) {
+    for (const coord of region.cells || []) {
+      const cell = parseCoordinate(coord);
+      if (cell && cell.row < gridData.height && cell.col < gridData.width) {
+        regionGrid[cell.row][cell.col] = region.id;
+      }
+    }
+  }
+
+  // Compare with ASCII grid
+  let mismatches = 0;
+  for (let r = 0; r < Math.min(ascii.length, gridData.height); r++) {
+    const asciiRow = ascii[r] || '';
+    for (let c = 0; c < Math.min(asciiRow.length, gridData.width); c++) {
+      const asciiChar = asciiRow[c].toUpperCase();
+      const regionChar = regionGrid[r][c].toUpperCase();
+
+      // Both should agree on holes vs non-holes
+      const asciiIsHole = asciiChar === '#' || asciiChar === '.';
+      const regionIsHole = regionChar === '#' || regionChar === '.';
+
+      if (asciiIsHole !== regionIsHole) {
+        mismatches++;
+        if (mismatches <= 3) {
+          issues.push(`Cell (${r},${c}): ASCII='${asciiChar}' vs regions='${regionChar}'`);
+        }
+      }
+    }
+  }
+
+  if (mismatches > 3) {
+    issues.push(`... and ${mismatches - 3} more mismatches`);
+  }
+
+  if (mismatches > 0) {
+    confidence -= Math.min(0.3, mismatches * 0.05);
+  }
+
+  return {
+    valid: mismatches === 0,
+    issues,
+    confidence: Math.max(0.5, confidence),
+  };
 }
 
 // Check if a set of cells forms a contiguous region (connected by edges)
@@ -114,12 +299,11 @@ Output format - JSON array only:
 
 Example: [(3,5), (0,0), (2,6), (4,4)]`;
 
-async function extractDominoesFromImage(
+async function extractDominoesWithModel(
   base64Image: string,
+  model: string,
   expectedCount?: number
 ): Promise<ExtractedDomino[]> {
-  console.log('[AI] Extracting dominoes with GPT-5.2...');
-
   const prompt = expectedCount
     ? `${DOMINO_EXTRACTION_PROMPT}\n\nThere should be EXACTLY ${expectedCount} dominoes in the image.`
     : DOMINO_EXTRACTION_PROMPT;
@@ -133,7 +317,7 @@ async function extractDominoesFromImage(
       'X-Title': 'Pips Solver',
     },
     body: JSON.stringify({
-      model: 'openai/gpt-5.2',
+      model,
       messages: [
         {
           role: 'system',
@@ -145,7 +329,7 @@ async function extractDominoesFromImage(
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`,
+                url: `data:image/png;base64,${base64Image}`,
               },
             },
             {
@@ -162,16 +346,15 @@ async function extractDominoesFromImage(
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[AI] GPT-5.2 API error:', errorText);
-    throw new Error(`GPT-5.2 API error: ${response.status}`);
+    console.error(`[AI] ${model} API error:`, errorText);
+    throw new Error(`${model} API error: ${response.status}`);
   }
 
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content?.trim() || '';
-  console.log('[AI] GPT-5.2 domino response:', text);
+  console.log(`[AI] ${model} domino response:`, text);
 
   // Parse the response - handle various formats
-  // Could be: [(3,5), (0,0)] or [[3,5], [0,0]] or [{"pips": [3,5]}]
   let dominoes: ExtractedDomino[] = [];
 
   // Try parsing as tuple format: [(3,5), (0,0)]
@@ -206,8 +389,67 @@ async function extractDominoesFromImage(
     }
   }
 
-  console.log('[AI] Parsed dominoes:', dominoes.map(d => d.pips));
+  // Validate pip values
+  dominoes = validateDominoPips(dominoes);
+
   return dominoes;
+}
+
+async function extractDominoesFromImage(
+  base64Image: string,
+  expectedCount?: number
+): Promise<{ dominoes: ExtractedDomino[]; confidence: number; warnings: string[] }> {
+  console.log('[AI] Extracting dominoes with multi-model fallback...');
+
+  let lastError: Error | null = null;
+
+  // Try each model with retry delays
+  for (let modelIndex = 0; modelIndex < DOMINO_MODELS.length; modelIndex++) {
+    const model = DOMINO_MODELS[modelIndex];
+    console.log(`[AI] Trying domino model: ${model}`);
+
+    // Apply retry delay for subsequent attempts
+    if (modelIndex > 0 && RETRY_DELAYS[modelIndex]) {
+      console.log(`[AI] Waiting ${RETRY_DELAYS[modelIndex]}ms before retry...`);
+      await delay(RETRY_DELAYS[modelIndex]);
+    }
+
+    try {
+      const dominoes = await extractDominoesWithModel(base64Image, model, expectedCount);
+
+      // Validate count if expected
+      if (expectedCount && dominoes.length !== expectedCount) {
+        console.warn(`[AI] ${model} returned ${dominoes.length} dominoes, expected ${expectedCount}`);
+        if (modelIndex < DOMINO_MODELS.length - 1) {
+          continue; // Try next model
+        }
+      }
+
+      // Analyze confidence
+      const { confidence, issues } = analyzeDominoConfidence(dominoes);
+      const duplicateWarnings = detectSuspiciousDuplicates(dominoes);
+
+      console.log(`[AI] Domino extraction complete with ${model}:`, {
+        count: dominoes.length,
+        confidence: confidence.toFixed(2),
+        issues: issues.length,
+      });
+
+      return {
+        dominoes,
+        confidence,
+        warnings: [
+          ...issues.map(i => `Domino ${i.index}: ${i.reason}`),
+          ...duplicateWarnings,
+        ],
+      };
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      console.warn(`[AI] ${model} failed:`, lastError.message);
+    }
+  }
+
+  throw lastError || new Error('All domino extraction models failed');
 }
 
 // ==========================================
@@ -257,12 +499,11 @@ Output ONLY this JSON format:
   "unconstrained_regions": ["C"]
 }`;
 
-async function extractGridFromImage(
+async function extractGridWithModel(
   base64Image: string,
+  model: string,
   sizeHint?: GridSizeHint
 ): Promise<GridExtractionResponse> {
-  console.log('[AI] Extracting grid with GPT-5.2...');
-
   let prompt = GRID_EXTRACTION_PROMPT;
 
   if (sizeHint) {
@@ -290,7 +531,7 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
       'X-Title': 'Pips Solver',
     },
     body: JSON.stringify({
-      model: 'openai/gpt-5.2',
+      model,
       messages: [
         {
           role: 'system',
@@ -302,7 +543,7 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`,
+                url: `data:image/png;base64,${base64Image}`,
               },
             },
             {
@@ -312,21 +553,20 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
           ],
         },
       ],
-      max_tokens: 4000,
+      max_tokens: 8000, // Increased for complex grids
       temperature: 0.1,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[AI] GPT-5.2 grid API error:', errorText);
-    throw new Error(`GPT-5.2 API error: ${response.status}`);
+    console.error(`[AI] ${model} grid API error:`, errorText);
+    throw new Error(`${model} API error: ${response.status}`);
   }
 
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content?.trim() || '';
-  console.log('[AI] GPT-5.2 grid response length:', text.length);
-  console.log('[AI] GPT-5.2 grid response preview:', text.slice(0, 500));
+  console.log(`[AI] ${model} grid response length:`, text.length);
 
   // Clean and parse JSON
   let cleanedText = text;
@@ -340,14 +580,80 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
   }
 
   const gridData: GridExtractionResponse = JSON.parse(jsonMatch[0]);
-  console.log('[AI] Parsed grid:', {
-    width: gridData.width,
-    height: gridData.height,
-    regions: gridData.regions?.length,
-    holes: gridData.holes?.length,
-  });
-
   return gridData;
+}
+
+async function extractGridFromImage(
+  base64Image: string,
+  sizeHint?: GridSizeHint
+): Promise<{ gridData: GridExtractionResponse; confidence: number; warnings: string[] }> {
+  console.log('[AI] Extracting grid with multi-model fallback...');
+
+  let lastError: Error | null = null;
+
+  // Try each model with retry delays
+  for (let modelIndex = 0; modelIndex < GRID_MODELS.length; modelIndex++) {
+    const model = GRID_MODELS[modelIndex];
+    console.log(`[AI] Trying grid model: ${model}`);
+
+    // Apply retry delay for subsequent attempts
+    if (modelIndex > 0 && RETRY_DELAYS[modelIndex]) {
+      console.log(`[AI] Waiting ${RETRY_DELAYS[modelIndex]}ms before retry...`);
+      await delay(RETRY_DELAYS[modelIndex]);
+    }
+
+    try {
+      const gridData = await extractGridWithModel(base64Image, model, sizeHint);
+
+      // Validate dimensions if sizeHint provided
+      if (sizeHint) {
+        if (gridData.width !== sizeHint.cols || gridData.height !== sizeHint.rows) {
+          console.warn(`[AI] ${model} returned wrong dimensions: ${gridData.width}x${gridData.height}, expected ${sizeHint.cols}x${sizeHint.rows}`);
+          // Force correct dimensions
+          gridData.width = sizeHint.cols;
+          gridData.height = sizeHint.rows;
+        }
+      }
+
+      // Verify ASCII grid consistency
+      const asciiVerification = verifyAsciiGridConsistency(gridData);
+      const warnings: string[] = [...asciiVerification.issues];
+
+      // Check region contiguity
+      let contiguityConfidence = 1.0;
+      for (const region of gridData.regions || []) {
+        const cells = (region.cells || []).map(c => {
+          const parsed = parseCoordinate(c);
+          return parsed || { row: 0, col: 0 };
+        });
+
+        if (!checkRegionContiguity(cells)) {
+          warnings.push(`Region ${region.id} has non-contiguous cells`);
+          contiguityConfidence -= 0.1;
+        }
+      }
+
+      // Calculate overall confidence
+      const confidence = Math.max(0.3, Math.min(1,
+        (asciiVerification.confidence + contiguityConfidence) / 2
+      ));
+
+      console.log(`[AI] Grid extraction complete with ${model}:`, {
+        width: gridData.width,
+        height: gridData.height,
+        regions: gridData.regions?.length,
+        holes: gridData.holes?.length,
+        confidence: confidence.toFixed(2),
+      });
+
+      return { gridData, confidence, warnings };
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      console.warn(`[AI] ${model} failed:`, lastError.message);
+    }
+  }
+
+  throw lastError || new Error('All grid extraction models failed');
 }
 
 // Parse "R#,C#" format to Cell
@@ -422,26 +728,32 @@ function convertGridResponseToRegions(gridData: GridExtractionResponse): {
 }
 
 // ==========================================
-// NEW: Dual Extraction API
+// NEW: Dual Extraction API with Confidence
 // ==========================================
+
+export interface DualExtractionResult {
+  puzzleData: PuzzleData;
+  confidence: ExtractionConfidence;
+}
+
 export async function extractPuzzleFromDualImages(
   dominoImageUri: string,
   gridImageUri: string,
   sizeHint?: GridSizeHint
-): Promise<PuzzleData> {
+): Promise<DualExtractionResult> {
   if (!OPENROUTER_API_KEY) {
     throw new Error('OpenRouter API key not configured. Please add it in the ENV tab.');
   }
 
-  console.log('[AI] Starting dual image extraction...');
+  console.log('[AI] Starting dual image extraction with confidence scoring...');
 
   // Read both images as base64
   const [dominoBase64, gridBase64] = await Promise.all([
     FileSystem.readAsStringAsync(dominoImageUri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     }),
     FileSystem.readAsStringAsync(gridImageUri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     }),
   ]);
 
@@ -452,6 +764,13 @@ export async function extractPuzzleFromDualImages(
     try {
       console.log(`[AI] Dual extraction attempt ${attempt}/${MAX_RETRIES}...`);
 
+      // Apply retry delay for subsequent attempts
+      if (attempt > 1) {
+        const delayMs = RETRY_DELAYS[Math.min(attempt - 1, RETRY_DELAYS.length - 1)];
+        console.log(`[AI] Waiting ${delayMs}ms before retry...`);
+        await delay(delayMs);
+      }
+
       // Extract dominoes and grid in parallel
       const [dominoResult, gridResult] = await Promise.all([
         extractDominoesFromImage(dominoBase64, sizeHint?.dominoCount),
@@ -459,7 +778,7 @@ export async function extractPuzzleFromDualImages(
       ]);
 
       // Convert grid response to our format
-      const { regions, validCells, holes } = convertGridResponseToRegions(gridResult);
+      const { regions, validCells, holes } = convertGridResponseToRegions(gridResult.gridData);
 
       // Validate counts
       if (sizeHint) {
@@ -467,34 +786,81 @@ export async function extractPuzzleFromDualImages(
         if (validCells.length !== expectedCells) {
           throw new Error(`Cell count mismatch: got ${validCells.length}, expected ${expectedCells}`);
         }
-        if (dominoResult.length !== sizeHint.dominoCount) {
-          throw new Error(`Domino count mismatch: got ${dominoResult.length}, expected ${sizeHint.dominoCount}`);
+        if (dominoResult.dominoes.length !== sizeHint.dominoCount) {
+          throw new Error(`Domino count mismatch: got ${dominoResult.dominoes.length}, expected ${sizeHint.dominoCount}`);
         }
       }
 
       // Build puzzle data
       const puzzleData = buildPuzzleData(
-        gridResult.width || sizeHint?.cols || 5,
-        gridResult.height || sizeHint?.rows || 5,
+        gridResult.gridData.width || sizeHint?.cols || 5,
+        gridResult.gridData.height || sizeHint?.rows || 5,
         validCells,
         regions,
-        dominoResult
+        dominoResult.dominoes
       );
+
+      // Build confidence data
+      const lowConfidenceAreas: ExtractionConfidence['lowConfidenceAreas'] = [];
+
+      // Add domino confidence issues
+      for (const warning of dominoResult.warnings) {
+        const match = warning.match(/Domino (\d+):/);
+        if (match) {
+          lowConfidenceAreas.push({
+            type: 'domino',
+            index: parseInt(match[1]),
+            reason: warning,
+          });
+        }
+      }
+
+      // Add grid confidence issues
+      for (const warning of gridResult.warnings) {
+        if (warning.includes('Region')) {
+          const match = warning.match(/Region (\w+)/);
+          lowConfidenceAreas.push({
+            type: 'region',
+            index: match ? puzzleData.regions.findIndex(r => r.id.includes(match[1])) : 0,
+            reason: warning,
+          });
+        }
+      }
+
+      // Analyze constraint confidence (simple heuristic)
+      let constraintConfidence = 1.0;
+      for (const region of puzzleData.regions) {
+        if (region.constraint.type === 'any') {
+          // "any" constraints might be unread badges
+          constraintConfidence -= 0.05;
+        }
+      }
+
+      const confidence: ExtractionConfidence = {
+        dominoPipsConfidence: dominoResult.confidence,
+        gridStructureConfidence: gridResult.confidence,
+        regionBoundaryConfidence: gridResult.confidence * 0.9, // Slightly lower
+        constraintReadConfidence: Math.max(0.5, constraintConfidence),
+        lowConfidenceAreas,
+        warnings: [...dominoResult.warnings, ...gridResult.warnings],
+      };
 
       console.log('[AI] Dual extraction successful!', {
         dominoes: puzzleData.availableDominoes.length,
         cells: puzzleData.validCells.length,
         regions: puzzleData.regions.length,
+        overallConfidence: (
+          (confidence.dominoPipsConfidence +
+            confidence.gridStructureConfidence +
+            confidence.constraintReadConfidence) / 3
+        ).toFixed(2),
+        warnings: confidence.warnings.length,
       });
 
-      return puzzleData;
+      return { puzzleData, confidence };
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
       console.warn(`[AI] Attempt ${attempt} failed: ${lastError.message}`);
-
-      if (attempt < MAX_RETRIES) {
-        console.log('[AI] Retrying...');
-      }
     }
   }
 
@@ -695,7 +1061,7 @@ export async function extractPuzzleFromImage(
 
   // Read image as base64
   const base64Image = await FileSystem.readAsStringAsync(imageUri, {
-    encoding: FileSystem.EncodingType.Base64,
+    encoding: 'base64',
   });
 
   const MAX_RETRIES = 3;
@@ -934,12 +1300,15 @@ ${EXTRACTION_PROMPT}`;
   const dominoCount = sizeHint?.dominoCount ?? extractedResponse.available_dominoes?.length ?? 0;
   if (dominoCount > 0) {
     try {
-      const gptDominoes = await extractDominoesFromImage(base64Image, dominoCount);
-      if (gptDominoes.length === dominoCount) {
+      const dominoResult = await extractDominoesFromImage(base64Image, dominoCount);
+      if (dominoResult.dominoes.length === dominoCount) {
         console.log('[AI] Replacing Gemini dominoes with GPT-5.2 dominoes');
-        extractedResponse.available_dominoes = gptDominoes;
+        extractedResponse.available_dominoes = dominoResult.dominoes;
+        if (dominoResult.warnings.length > 0) {
+          console.warn('[AI] Domino extraction warnings:', dominoResult.warnings);
+        }
       } else {
-        console.warn(`[AI] GPT-5.2 returned ${gptDominoes.length} dominoes, expected ${dominoCount}. Keeping Gemini values.`);
+        console.warn(`[AI] GPT-5.2 returned ${dominoResult.dominoes.length} dominoes, expected ${dominoCount}. Keeping Gemini values.`);
       }
     } catch (gptError) {
       console.warn('[AI] GPT-5.2 domino extraction failed, keeping Gemini values:', gptError);

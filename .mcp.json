@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "spawner": {
+      "type": "stdio",
+      "command": "cmd.exe",
+      "args": ["/c", "npx", "-y", "mcp-remote", "https://mcp.vibeship.co"],
+      "env": {}
+    }
+  }
+}

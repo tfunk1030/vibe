@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude mcp add:*)",
+      "Bash(npx github:vibeforge1111/vibeship-spawner-skills install:*)",
+      "Bash(npx --yes github:vibeforge1111/vibeship-spawner-skills install --mcp)",
+      "Skill(skill-developer)",
+      "mcp__spawner__spawner_analyze",
+      "mcp__spawner__spawner_skills",
+      "Skill(expo-docs)",
+      "Bash(npm run typecheck:*)",
+      "Bash(grep:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

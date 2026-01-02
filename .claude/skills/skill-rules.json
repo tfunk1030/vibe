@@ -1100,6 +1100,63 @@
                     "(understand|learn).*?(codebase|project)"
                 ]
             }
+        },
+        "puzzle-solver-patterns": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Constraint satisfaction patterns for the Pips puzzle solver",
+            "promptTriggers": {
+                "keywords": [
+                    "add constraint",
+                    "new constraint type",
+                    "solver failing",
+                    "no solution found",
+                    "optimize solver",
+                    "backtracking",
+                    "constraint satisfaction",
+                    "solver performance",
+                    "puzzle unsolvable",
+                    "constraint check",
+                    "heuristic"
+                ],
+                "intentPatterns": [
+                    "(add|create|implement).*?(constraint|constraint type)",
+                    "(solver|solving).*?(fail|error|wrong|slow)",
+                    "(optimize|improve|speed up).*?(solver|backtracking)",
+                    "(why|debug).*?(no solution|unsolvable|can't solve)",
+                    "(constraint).*?(check|validation|satisfaction)"
+                ]
+            }
+        },
+        "image-extraction-debug": {
+            "type": "domain",
+            "enforcement": "suggest",
+            "priority": "high",
+            "description": "Debug Gemini/GPT vision API issues in puzzle image extraction",
+            "promptTriggers": {
+                "keywords": [
+                    "extraction failing",
+                    "wrong grid size",
+                    "domino count",
+                    "pip count wrong",
+                    "constraint badge",
+                    "region detection",
+                    "gemini error",
+                    "vision api",
+                    "gpt-5.2",
+                    "image analysis",
+                    "extraction error",
+                    "api timeout"
+                ],
+                "intentPatterns": [
+                    "(extraction|extracting).*?(fail|error|wrong)",
+                    "(grid|domino|region).*?(wrong|incorrect|missing)",
+                    "(ai|gemini|gpt).*?(error|fail|wrong)",
+                    "(image|photo).*?(extraction|analysis|detection).*?(issue|problem)",
+                    "(api|openrouter).*?(error|timeout|fail)"
+                ]
+            }
         }
     },
     "notes": {
