@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mind": {
+      "command": "python",
+      "args": ["-m", "mind", "mcp"]
+    }
+  }
+}
