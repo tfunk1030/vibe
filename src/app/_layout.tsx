@@ -6,6 +6,7 @@ import { useColorScheme } from '@/lib/useColorScheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { useEffect } from 'react';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -32,6 +33,11 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    // Hide splash screen once the app is ready
+    SplashScreen.hideAsync();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

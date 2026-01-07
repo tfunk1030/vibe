@@ -11,7 +11,18 @@
       "Bash(npm run typecheck:*)",
       "Bash(grep:*)",
       "Bash(npx tsc:*)",
-      "WebFetch(domain:docs.expo.dev)"
+      "WebFetch(domain:docs.expo.dev)",
+      "mcp__spawner__spawner_watch_out",
+      "Bash(echo \"Exit code: $?\")",
+      "WebSearch",
+      "WebFetch(domain:expo.dev)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:diko-dev99.medium.com)",
+      "Bash(bun add:*)",
+      "Bash(npm install:*)",
+      "Bash(npx expo install:*)",
+      "Bash(npx expo-doctor@latest)",
+      "Bash(cat:*)"
     ]
   }
 }

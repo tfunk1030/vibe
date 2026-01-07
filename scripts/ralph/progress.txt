@@ -1,0 +1,45 @@
+# Ralph Progress Log
+Started: 2026-01-06
+
+## Codebase Patterns
+- **Styling**: Use `useRedesignTheme()` for colors/tokens - never hardcode colors
+- **Haptics**: Import from `expo-haptics`, use `Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light/Medium)`
+- **Animations**: Use `react-native-reanimated` - FadeIn, FadeInDown for enter animations
+- **Components**: Wrap with `memo()` for performance, use React.FC<Props> typing
+- **Accessibility**: ALL interactive elements need `accessibilityLabel` and `accessibilityRole`
+- **Imports**: Use `@/src/...` alias paths
+- **File naming**: kebab-case for files (e.g., `add-club-modal.tsx`)
+- **Typecheck**: Run `npx tsc --noEmit` to verify
+- **Club context**: `useClubSettings()` from `@/src/features/settings/context/clubs`
+- **Theme context**: `useRedesignTheme()` from `@/src/theme/redesign`
+- **Settings context**: `useSettings()` from `@/src/core/context/settings`
+
+## Key Files
+- `src/features/redesign/screens/` - PlayScreen, StatsScreen, SetupScreen
+- `src/components/redesign/` - ResultCard, QuickAction, MetricPill
+- `src/theme/redesign/` - Theme provider and tokens
+- `src/features/settings/context/clubs.tsx` - Club bag management
+- `CLAUDE.md` - Project conventions and rules
+
+## Component Template
+```tsx
+import React, { memo } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useRedesignTheme } from '@/src/theme/redesign';
+
+interface Props {
+  // typed props here
+}
+
+export const ComponentName = memo(function ComponentName({ ...props }: Props) {
+  const { colors, tokens } = useRedesignTheme();
+  
+  return (
+    <View accessibilityRole="..." accessibilityLabel="...">
+      {/* content */}
+    </View>
+  );
+});
+```
+
+---

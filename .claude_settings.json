@@ -1,0 +1,34 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(C:\\Users\\tfunk\\vibe/**)",
+      "Write(C:\\Users\\tfunk\\vibe/**)",
+      "Edit(C:\\Users\\tfunk\\vibe/**)",
+      "Glob(C:\\Users\\tfunk\\vibe/**)",
+      "Grep(C:\\Users\\tfunk\\vibe/**)",
+      "Read(C:\\Users\\tfunk\\vibe\\.auto-claude\\roadmap/**)",
+      "Write(C:\\Users\\tfunk\\vibe\\.auto-claude\\roadmap/**)",
+      "Edit(C:\\Users\\tfunk\\vibe\\.auto-claude\\roadmap/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}
