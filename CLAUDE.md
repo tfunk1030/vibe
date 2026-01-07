@@ -1,8 +1,8 @@
 <stack>
-  Expo SDK 53, React Native 0.76.7, bun (not npm).
+  Expo SDK 54, React Native 0.81.5, bun (not npm).
   React Query for server/async state.
   NativeWind + Tailwind v3 for styling.
-  react-native-reanimated v3 for animations (preferred over Animated from react-native).
+  react-native-reanimated v4 for animations (preferred over Animated from react-native).
   react-native-gesture-handler for gestures.
   lucide-react-native for icons.
   All packages are pre-installed. DO NOT install new packages unless they are @expo-google-font packages or pure JavaScript helpers like lodash, dayjs, etc.
