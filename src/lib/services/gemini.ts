@@ -486,7 +486,7 @@ If you count a different number, re-check carefully before outputting.`;
           ],
         },
       ],
-      max_tokens: 1500,
+      max_tokens: 4000,
       temperature: 0.1,
     }),
   });
@@ -552,7 +552,29 @@ If you count a different number, re-check carefully before outputting.`;
         }
       } catch (e) {
         console.warn('[AI] Could not parse JSON array:', e);
+        // Fallback: Try to extract complete domino pairs from truncated JSON
+        // Matches patterns like [2,6], [3,5], etc.
+        const pairRegex = /\[\s*(\d+)\s*,\s*(\d+)\s*\]/g;
+        let match;
+        while ((match = pairRegex.exec(text)) !== null) {
+          dominoes.push({ pips: [parseInt(match[1]), parseInt(match[2])] });
+        }
+        if (dominoes.length > 0) {
+          console.log(`[AI] Recovered ${dominoes.length} dominoes from truncated response`);
+        }
       }
+    }
+  }
+
+  // Last resort: extract any [digit,digit] patterns from the entire text
+  if (dominoes.length === 0) {
+    const pairRegex = /\[\s*(\d+)\s*,\s*(\d+)\s*\]/g;
+    let match;
+    while ((match = pairRegex.exec(text)) !== null) {
+      dominoes.push({ pips: [parseInt(match[1]), parseInt(match[2])] });
+    }
+    if (dominoes.length > 0) {
+      console.log(`[AI] Extracted ${dominoes.length} dominoes via pattern matching`);
     }
   }
 

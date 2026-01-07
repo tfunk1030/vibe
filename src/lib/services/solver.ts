@@ -246,6 +246,52 @@ export function solvePuzzle(puzzle: PuzzleData): PuzzleSolution {
     regions: puzzle.regions.length,
   });
 
+  // Log valid cells to check island structure
+  console.log('[Solver] Valid cells:', puzzle.validCells.map(c => `(${c.row},${c.col})`).join(' '));
+
+  // Detect islands (connected components)
+  const validCellSet = new Set(puzzle.validCells.map(cellKey));
+  const visited = new Set<string>();
+  const islands: Cell[][] = [];
+
+  for (const startCell of puzzle.validCells) {
+    const key = cellKey(startCell);
+    if (visited.has(key)) continue;
+
+    // BFS to find connected component
+    const island: Cell[] = [];
+    const queue: Cell[] = [startCell];
+    visited.add(key);
+
+    while (queue.length > 0) {
+      const cell = queue.shift()!;
+      island.push(cell);
+
+      // Check all 4 neighbors
+      const neighbors = [
+        { row: cell.row - 1, col: cell.col },
+        { row: cell.row + 1, col: cell.col },
+        { row: cell.row, col: cell.col - 1 },
+        { row: cell.row, col: cell.col + 1 },
+      ];
+
+      for (const n of neighbors) {
+        const nKey = cellKey(n);
+        if (validCellSet.has(nKey) && !visited.has(nKey)) {
+          visited.add(nKey);
+          queue.push(n);
+        }
+      }
+    }
+
+    islands.push(island);
+  }
+
+  console.log(`[Solver] Found ${islands.length} island(s):`);
+  islands.forEach((island, i) => {
+    console.log(`[Solver]   Island ${i + 1}: ${island.length} cells - ${island.map(c => `(${c.row},${c.col})`).join(' ')}`);
+  });
+
   // Log domino values for debugging
   console.log('[Solver] Dominoes:', puzzle.availableDominoes.map(d => `[${d.pips[0]},${d.pips[1]}]`).join(' '));
 
@@ -253,6 +299,24 @@ export function solvePuzzle(puzzle: PuzzleData): PuzzleSolution {
   for (const region of puzzle.regions) {
     const cellsStr = region.cells.map(c => `(${c.row},${c.col})`).join(',');
     console.log(`[Solver] Region ${region.id}: ${region.constraint.type}${region.constraint.value !== undefined ? '=' + region.constraint.value : ''} cells:[${cellsStr}]`);
+  }
+
+  // Log domino pip sums to help debug constraint issues
+  const dominoSums = puzzle.availableDominoes.map(d => d.pips[0] + d.pips[1]);
+  console.log('[Solver] Domino pip sums:', dominoSums.sort((a, b) => a - b).join(', '));
+
+  // Pre-check: For 2-cell sum regions where both cells are adjacent, check if a matching domino exists
+  for (const region of puzzle.regions) {
+    if (region.constraint.type === 'sum' && region.cells.length === 2) {
+      const [c1, c2] = region.cells;
+      if (areCellsAdjacent(c1, c2)) {
+        const neededSum = region.constraint.value!;
+        const hasDomino = dominoSums.includes(neededSum);
+        if (!hasDomino) {
+          console.log(`[Solver] WARNING: Region ${region.id} needs sum=${neededSum} for 2 adjacent cells, but no domino has that sum!`);
+        }
+      }
+    }
   }
 
   // Validate puzzle has correct number of cells for dominoes
@@ -288,8 +352,7 @@ export function solvePuzzle(puzzle: PuzzleData): PuzzleSolution {
     });
   }
 
-  const validCellSet = new Set(puzzle.validCells.map(cellKey));
-
+  // validCellSet is already defined above for island detection, reuse it
   try {
     const result = solve(puzzle, validCellSet, [], new Set(), regionsToCheck);
 
@@ -314,11 +377,9 @@ export function solvePuzzle(puzzle: PuzzleData): PuzzleSolution {
       console.log('[Solver] Pip counts:', Array.from(pipCounts.entries()).map(([p, c]) => `${p}:${c}`).join(' '));
       console.log('[Solver] Total pip sum:', pipSum);
 
-      // Check each sum constraint
-      let sumTotal = 0;
+      // Log constraint details for debugging
       for (const region of regionsToCheck) {
         if (region.constraint.type === 'sum' && region.constraint.value !== undefined) {
-          sumTotal += region.constraint.value;
           console.log(`[Solver] Sum constraint: ${region.cells.length} cells need sum=${region.constraint.value}`);
         }
         if (region.constraint.type === 'different') {
@@ -327,10 +388,6 @@ export function solvePuzzle(puzzle: PuzzleData): PuzzleSolution {
         if (region.constraint.type === 'equal') {
           console.log(`[Solver] Equal constraint: ${region.cells.length} cells need same value`);
         }
-      }
-
-      if (sumTotal > 0 && sumTotal !== pipSum) {
-        console.log(`[Solver] WARNING: Sum constraints total ${sumTotal} but pip sum is ${pipSum}`);
       }
 
       return {

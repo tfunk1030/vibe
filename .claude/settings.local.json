@@ -22,7 +22,8 @@
       "Bash(npm install:*)",
       "Bash(npx expo install:*)",
       "Bash(npx expo-doctor@latest)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Skill(frontend-app-design)"
     ]
   }
 }
