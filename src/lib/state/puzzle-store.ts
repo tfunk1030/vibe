@@ -13,7 +13,7 @@ import {
   REGION_COLORS,
 } from '../types/puzzle';
 
-export type GridEditMode = 'none' | 'addCell' | 'removeCell' | 'assignRegion';
+export type GridEditMode = 'none' | 'addCell' | 'removeCell' | 'assignRegion' | 'paintBucket';
 
 interface PuzzleStore {
   // Puzzle state
@@ -71,6 +71,7 @@ interface PuzzleStore {
   moveCellToRegion: (cell: Cell, targetRegionId: string) => void;
   updateGridSize: (width: number, height: number) => void;
   toggleCellInGrid: (cell: Cell) => void;
+  floodFillRegion: (startCell: Cell, targetRegionId: string) => void;
 }
 
 const initialState = {
@@ -426,5 +427,96 @@ export const usePuzzleStore = create<PuzzleStore>((set, get) => ({
         currentPlacements: [],
       });
     }
+  },
+
+  floodFillRegion: (startCell, targetRegionId) => {
+    const { puzzle } = get();
+    if (!puzzle) return;
+
+    // Find the current region of the start cell
+    const startKey = cellKey(startCell);
+    let sourceRegionId: string | null = null;
+    for (const region of puzzle.regions) {
+      if (region.cells.some(c => cellKey(c) === startKey)) {
+        sourceRegionId = region.id;
+        break;
+      }
+    }
+
+    // If start cell is not in any region or same as target, do nothing
+    if (!sourceRegionId || sourceRegionId === targetRegionId) return;
+
+    // Build adjacency map for valid cells
+    const validCellSet = new Set(puzzle.validCells.map(cellKey));
+    const getAdjacentCells = (cell: Cell): Cell[] => {
+      const adjacent: Cell[] = [
+        { row: cell.row - 1, col: cell.col },
+        { row: cell.row + 1, col: cell.col },
+        { row: cell.row, col: cell.col - 1 },
+        { row: cell.row, col: cell.col + 1 },
+      ];
+      return adjacent.filter(c => validCellSet.has(cellKey(c)));
+    };
+
+    // Get all cells in the source region
+    const sourceRegion = puzzle.regions.find(r => r.id === sourceRegionId);
+    if (!sourceRegion) return;
+    const sourceCellKeys = new Set(sourceRegion.cells.map(cellKey));
+
+    // Flood fill to find connected cells in the same region
+    const visited = new Set<string>();
+    const toFill: Cell[] = [];
+    const queue: Cell[] = [startCell];
+
+    while (queue.length > 0) {
+      const cell = queue.shift()!;
+      const key = cellKey(cell);
+
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      // Only process cells in the source region
+      if (!sourceCellKeys.has(key)) continue;
+
+      toFill.push(cell);
+
+      // Add adjacent cells to queue
+      for (const adjacent of getAdjacentCells(cell)) {
+        const adjKey = cellKey(adjacent);
+        if (!visited.has(adjKey) && sourceCellKeys.has(adjKey)) {
+          queue.push(adjacent);
+        }
+      }
+    }
+
+    if (toFill.length === 0) return;
+
+    // Move all connected cells to the target region
+    const toFillKeys = new Set(toFill.map(cellKey));
+    const updatedRegions = puzzle.regions.map((region) => {
+      if (region.id === sourceRegionId) {
+        // Remove filled cells from source region
+        return {
+          ...region,
+          cells: region.cells.filter(c => !toFillKeys.has(cellKey(c))),
+        };
+      } else if (region.id === targetRegionId) {
+        // Add filled cells to target region
+        return {
+          ...region,
+          cells: [...region.cells, ...toFill],
+        };
+      }
+      return region;
+    });
+
+    set({
+      puzzle: {
+        ...puzzle,
+        regions: updatedRegions,
+      },
+      solution: null,
+      currentPlacements: [],
+    });
   },
 }));

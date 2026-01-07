@@ -9,6 +9,7 @@ import {
   dominoId,
   REGION_COLORS,
   cellKey,
+  ExtractionConfidence,
 } from '../types/puzzle';
 
 const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY;
@@ -56,13 +57,8 @@ export interface GridSizeHint {
   dominoCount: number;
 }
 
-// Extraction result with confidence scoring
-export interface ExtractionConfidence {
-  overall: number;           // 0-1 overall confidence
-  dominoConfidence: number;  // 0-1 confidence in domino extraction
-  gridConfidence: number;    // 0-1 confidence in grid extraction
-  warnings: string[];        // List of potential issues
-}
+// Re-export ExtractionConfidence from puzzle types for convenience
+export type { ExtractionConfidence } from '../types/puzzle';
 
 // Compare two domino arrays and return similarity score (0-1)
 function compareDominoArrays(a: ExtractedDomino[], b: ExtractedDomino[]): { score: number; mismatches: number[] } {
@@ -89,14 +85,23 @@ function compareDominoArrays(a: ExtractedDomino[], b: ExtractedDomino[]): { scor
   return { score: matches / a.length, mismatches };
 }
 
-// Compare two grid responses and return similarity score (0-1)
-function compareGridResponses(a: GridExtractionResponse, b: GridExtractionResponse): { score: number; warnings: string[] } {
+// Compare two grid responses and return similarity score (0-1) plus uncertain cells/regions
+interface GridComparisonResult {
+  score: number;
+  warnings: string[];
+  uncertainCells: string[];    // Cells that differ between passes
+  uncertainRegions: string[];  // Regions with constraint disagreement
+}
+
+function compareGridResponses(a: GridExtractionResponse, b: GridExtractionResponse): GridComparisonResult {
   const warnings: string[] = [];
+  const uncertainCells: string[] = [];
+  const uncertainRegions: string[] = [];
 
   // Check dimensions
   if (a.width !== b.width || a.height !== b.height) {
     warnings.push(`Grid dimensions differ: ${a.width}x${a.height} vs ${b.width}x${b.height}`);
-    return { score: 0.5, warnings };
+    return { score: 0.5, warnings, uncertainCells, uncertainRegions };
   }
 
   // Check region count
@@ -107,6 +112,28 @@ function compareGridResponses(a: GridExtractionResponse, b: GridExtractionRespon
   // Compare cells per region by building cell sets
   const aCells = new Set(a.regions.flatMap(r => r.cells));
   const bCells = new Set(b.regions.flatMap(r => r.cells));
+
+  // Find cells that are uncertain (in one pass but not the other)
+  for (const cell of aCells) {
+    if (!bCells.has(cell)) {
+      // Convert "R#,C#" format to "row,col" format
+      const match = cell.match(/R(\d+),C(\d+)/);
+      if (match) {
+        uncertainCells.push(`${match[1]},${match[2]}`);
+      }
+    }
+  }
+  for (const cell of bCells) {
+    if (!aCells.has(cell)) {
+      const match = cell.match(/R(\d+),C(\d+)/);
+      if (match) {
+        const key = `${match[1]},${match[2]}`;
+        if (!uncertainCells.includes(key)) {
+          uncertainCells.push(key);
+        }
+      }
+    }
+  }
 
   let cellMatches = 0;
   for (const cell of aCells) {
@@ -120,7 +147,7 @@ function compareGridResponses(a: GridExtractionResponse, b: GridExtractionRespon
     warnings.push(`Cell positions differ significantly (${Math.round(cellScore * 100)}% match)`);
   }
 
-  // Compare constraint types
+  // Compare constraint types and track uncertain regions
   let constraintMatches = 0;
   for (const aRegion of a.regions) {
     const bRegion = b.regions.find(r => {
@@ -140,10 +167,14 @@ function compareGridResponses(a: GridExtractionResponse, b: GridExtractionRespon
           constraintMatches++;
         } else {
           warnings.push(`Constraint value differs for region: ${aRegion.constraint_value} vs ${bRegion.constraint_value}`);
+          uncertainRegions.push(aRegion.id);
         }
       } else {
         constraintMatches++;
       }
+    } else if (bRegion) {
+      // Constraint type differs - mark region as uncertain
+      uncertainRegions.push(aRegion.id);
     }
   }
 
@@ -152,6 +183,8 @@ function compareGridResponses(a: GridExtractionResponse, b: GridExtractionRespon
   return {
     score: (cellScore + constraintScore) / 2,
     warnings,
+    uncertainCells,
+    uncertainRegions,
   };
 }
 
@@ -1200,22 +1233,25 @@ export async function extractPuzzleFromDualImages(
         }
       }
 
+      // Build confidence metadata including uncertain cells/regions
+      const confidence: ExtractionConfidence = {
+        overall: comparison.score,
+        dominoConfidence: 1.0, // Domino extraction is typically more reliable
+        gridConfidence: comparison.score,
+        warnings: comparison.warnings,
+        uncertainCells: comparison.uncertainCells,
+        uncertainRegions: comparison.uncertainRegions,
+      };
+
       // Build puzzle data with confidence information
       const puzzleData = buildPuzzleData(
         gridResult.width || sizeHint?.cols || 5,
         gridResult.height || sizeHint?.rows || 5,
         validCells,
         regions,
-        dominoResult
+        dominoResult,
+        confidence
       );
-
-      // Log confidence for debugging
-      const confidence: ExtractionConfidence = {
-        overall: comparison.score,
-        dominoConfidence: 1.0, // Domino extraction is typically more reliable
-        gridConfidence: comparison.score,
-        warnings: comparison.warnings,
-      };
 
       console.log('[AI] Dual extraction successful!', {
         dominoes: puzzleData.availableDominoes.length,
@@ -1223,6 +1259,8 @@ export async function extractPuzzleFromDualImages(
         regions: puzzleData.regions.length,
         confidence: `${(confidence.overall * 100).toFixed(0)}%`,
         warnings: confidence.warnings.length,
+        uncertainCells: confidence.uncertainCells.length,
+        uncertainRegions: confidence.uncertainRegions.length,
       });
 
       return puzzleData;
@@ -1244,7 +1282,8 @@ function buildPuzzleData(
   height: number,
   validCells: ExtractedCell[],
   extractedRegions: ExtractedRegion[],
-  extractedDominoes: ExtractedDomino[]
+  extractedDominoes: ExtractedDomino[],
+  confidence?: ExtractionConfidence
 ): PuzzleData {
   // Convert valid cells
   const cells: Cell[] = validCells.map((c) => ({
@@ -1324,6 +1363,7 @@ function buildPuzzleData(
     regions,
     availableDominoes,
     blockedCells: [],
+    confidence,
   };
 }
 

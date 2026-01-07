@@ -11,6 +11,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  PaintBucket,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Region, constraintLabel } from '@/lib/types/puzzle';
@@ -28,6 +29,8 @@ interface EditToolbarProps {
   isDark: boolean;
   isRemoveCellMode?: boolean;
   onToggleRemoveCellMode?: () => void;
+  isPaintBucketMode?: boolean;
+  onTogglePaintBucketMode?: () => void;
 }
 
 function ToolButton({
@@ -258,7 +261,15 @@ export function EditToolbar({
   isDark,
   isRemoveCellMode = false,
   onToggleRemoveCellMode,
+  isPaintBucketMode = false,
+  onTogglePaintBucketMode,
 }: EditToolbarProps) {
+  // Get selected region color for paint bucket icon
+  const selectedRegion = regions.find(r => r.id === selectedRegionId);
+  const paintBucketColor = isPaintBucketMode
+    ? '#fff'
+    : selectedRegion?.color ?? (isDark ? '#ccc' : '#555');
+
   return (
     <Animated.View entering={FadeIn} className="mb-4">
       {/* Instructions */}
@@ -266,13 +277,20 @@ export function EditToolbar({
         <Text
           style={{
             fontSize: 13,
-            color: isRemoveCellMode ? '#EF4444' : isDark ? '#888' : '#666',
+            color: isRemoveCellMode
+              ? '#EF4444'
+              : isPaintBucketMode
+                ? selectedRegion?.color ?? '#3B82F6'
+                : isDark ? '#888' : '#666',
             textAlign: 'center',
+            fontWeight: isPaintBucketMode ? '600' : '400',
           }}
         >
           {isRemoveCellMode
             ? 'Tap cells to remove them from the grid'
-            : 'Select a region, then tap cells to assign them'}
+            : isPaintBucketMode
+              ? 'Tap to fill all connected cells with selected region'
+              : 'Select a region, then tap cells to assign them'}
         </Text>
       </View>
 
@@ -309,8 +327,17 @@ export function EditToolbar({
           small
         />
         <ToolButton
+          icon={<PaintBucket size={16} color={paintBucketColor} />}
+          label="Fill Area"
+          onPress={onTogglePaintBucketMode ?? (() => {})}
+          isDark={isDark}
+          small
+          isActive={isPaintBucketMode}
+          activeColor={selectedRegion?.color ?? '#3B82F6'}
+        />
+        <ToolButton
           icon={<Trash2 size={16} color={isRemoveCellMode ? '#fff' : '#EF4444'} />}
-          label="Remove Cell"
+          label="Remove"
           onPress={onToggleRemoveCellMode ?? (() => {})}
           isDark={isDark}
           small

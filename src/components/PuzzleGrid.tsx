@@ -6,7 +6,7 @@ import Animated, {
   withSpring,
   useSharedValue,
 } from 'react-native-reanimated';
-import { Plus } from 'lucide-react-native';
+import { Plus, AlertTriangle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import {
   PuzzleData,
@@ -14,6 +14,7 @@ import {
   Cell,
   cellKey,
   constraintLabel,
+  ExtractionConfidence,
 } from '@/lib/types/puzzle';
 import { GridEditMode } from '@/lib/state/puzzle-store';
 
@@ -114,6 +115,8 @@ function GridCell({
   isDark,
   isEditMode,
   isSelectedRegion,
+  isUncertain,
+  isUncertainRegion,
 }: {
   cell: Cell;
   cellSize: number;
@@ -127,6 +130,8 @@ function GridCell({
   isDark: boolean;
   isEditMode: boolean;
   isSelectedRegion: boolean;
+  isUncertain?: boolean;
+  isUncertainRegion?: boolean;
 }) {
   const scale = useSharedValue(1);
 
@@ -178,16 +183,18 @@ function GridCell({
           flex: 1,
           backgroundColor: regionColor + (isDark ? 'CC' : '99'),
           borderRadius: 6,
-          borderWidth: isSelected ? 3 : isEditMode ? 2 : 1,
+          borderWidth: isSelected ? 3 : (isUncertain || isUncertainRegion) ? 2 : isEditMode ? 2 : 1,
           borderColor: isSelected
             ? isDark
               ? '#fff'
               : '#000'
-            : isEditMode
-              ? '#3B82F6'
-              : isDark
-                ? 'rgba(255,255,255,0.3)'
-                : 'rgba(0,0,0,0.2)',
+            : (isUncertain || isUncertainRegion)
+              ? '#F59E0B' // Amber warning color
+              : isEditMode
+                ? '#3B82F6'
+                : isDark
+                  ? 'rgba(255,255,255,0.3)'
+                  : 'rgba(0,0,0,0.2)',
           justifyContent: 'center',
           alignItems: 'center',
           overflow: 'hidden',
@@ -229,6 +236,21 @@ function GridCell({
               </Text>
             </View>
           )
+        )}
+        {/* Warning indicator for uncertain cells/regions */}
+        {(isUncertain || isUncertainRegion) && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 2,
+              right: 2,
+              backgroundColor: '#F59E0B',
+              borderRadius: 3,
+              padding: 1,
+            }}
+          >
+            <AlertTriangle size={cellSize * 0.18} color="#fff" />
+          </View>
         )}
         {isEditMode && isSelectedRegion && (
           <View
@@ -398,6 +420,15 @@ export function PuzzleGrid({
     return region?.color ?? null;
   }, [selectedRegionForAssign, puzzle.regions]);
 
+  // Get sets of uncertain cells and regions from extraction confidence
+  const uncertainCellKeys = useMemo(() => {
+    return new Set(puzzle.confidence?.uncertainCells ?? []);
+  }, [puzzle.confidence?.uncertainCells]);
+
+  const uncertainRegionIds = useMemo(() => {
+    return new Set(puzzle.confidence?.uncertainRegions ?? []);
+  }, [puzzle.confidence?.uncertainRegions]);
+
   const gridWidth = puzzle.width * cellSize;
   const gridHeight = puzzle.height * cellSize;
 
@@ -451,6 +482,8 @@ export function PuzzleGrid({
             isDark={isDark}
             isEditMode={isEditMode}
             isSelectedRegion={isEditMode && regionInfo?.regionId === selectedRegionForAssign}
+            isUncertain={uncertainCellKeys.has(key)}
+            isUncertainRegion={regionInfo?.regionId ? uncertainRegionIds.has(regionInfo.regionId) : false}
           />
         );
       })}

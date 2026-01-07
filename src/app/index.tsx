@@ -156,6 +156,7 @@ export default function HomeScreen() {
   const [isAddingRegion, setIsAddingRegion] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [isRemoveCellMode, setIsRemoveCellMode] = useState(false);
+  const [isPaintBucketMode, setIsPaintBucketMode] = useState(false);
   const [showReferenceImage, setShowReferenceImage] = useState(false);
   const [showSizeHintModal, setShowSizeHintModal] = useState(false);
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
@@ -218,6 +219,7 @@ export default function HomeScreen() {
   const toggleCellInGrid = usePuzzleStore((s) => s.toggleCellInGrid);
   const moveCellToRegion = usePuzzleStore((s) => s.moveCellToRegion);
   const removeCell = usePuzzleStore((s) => s.removeCell);
+  const floodFillRegion = usePuzzleStore((s) => s.floodFillRegion);
   const setCurrentSavedPuzzle = usePuzzleStore((s) => s.setCurrentSavedPuzzle);
   const setImageUri = usePuzzleStore((s) => s.setImageUri);
 
@@ -541,6 +543,14 @@ export default function HomeScreen() {
   const handleToggleRemoveCellMode = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsRemoveCellMode((prev) => !prev);
+    setIsPaintBucketMode(false); // Turn off paint bucket mode when enabling remove mode
+  }, []);
+
+  // Handle toggle paint bucket mode
+  const handleTogglePaintBucketMode = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsPaintBucketMode((prev) => !prev);
+    setIsRemoveCellMode(false); // Turn off remove mode when enabling paint bucket
   }, []);
 
   // Handle cell press in edit mode - assign to selected region OR remove if in remove mode
@@ -551,13 +561,18 @@ export default function HomeScreen() {
         removeCell(cell);
         clearSolution();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } else if (isPaintBucketMode && selectedRegionForAssign) {
+        // Flood fill connected cells with selected region
+        floodFillRegion(cell, selectedRegionForAssign);
+        clearSolution();
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       } else if (selectedRegionForAssign) {
         moveCellToRegion(cell, selectedRegionForAssign);
         clearSolution();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     },
-    [isRemoveCellMode, selectedRegionForAssign, removeCell, moveCellToRegion, clearSolution]
+    [isRemoveCellMode, isPaintBucketMode, selectedRegionForAssign, removeCell, floodFillRegion, moveCellToRegion, clearSolution]
   );
 
   // Handle empty cell press (for adding cells to selected region)
@@ -1000,6 +1015,8 @@ export default function HomeScreen() {
                   isDark={isDark}
                   isRemoveCellMode={isRemoveCellMode}
                   onToggleRemoveCellMode={handleToggleRemoveCellMode}
+                  isPaintBucketMode={isPaintBucketMode}
+                  onTogglePaintBucketMode={handleTogglePaintBucketMode}
                 />
               )}
 

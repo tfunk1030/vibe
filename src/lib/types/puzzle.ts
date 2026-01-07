@@ -35,6 +35,16 @@ export interface PlacedDomino {
   cells: [Cell, Cell]; // The two cells this domino occupies
 }
 
+// Extraction confidence for visual feedback
+export interface ExtractionConfidence {
+  overall: number;           // 0-1 overall confidence
+  dominoConfidence: number;  // 0-1 confidence in domino extraction
+  gridConfidence: number;    // 0-1 confidence in grid extraction
+  warnings: string[];        // List of potential issues
+  uncertainCells: string[];  // Cell keys that have low confidence
+  uncertainRegions: string[]; // Region IDs that have low confidence
+}
+
 export interface PuzzleData {
   // Grid dimensions (for bounding box)
   width: number;
@@ -47,6 +57,8 @@ export interface PuzzleData {
   availableDominoes: Domino[];
   // Blocked/invalid cells
   blockedCells: Cell[];
+  // Extraction confidence metadata (optional, only from AI extraction)
+  confidence?: ExtractionConfidence;
 }
 
 export interface PuzzleSolution {
