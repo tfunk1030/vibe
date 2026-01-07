@@ -4,7 +4,6 @@ import {
   Text,
   Pressable,
   ScrollView,
-  ActivityIndicator,
   Alert,
   Image,
   Modal,
@@ -14,17 +13,9 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-  FadeIn,
-  FadeInDown,
-  useAnimatedStyle,
-  withSpring,
-  useSharedValue,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useMutation } from '@tanstack/react-query';
 import {
-  Camera,
-  Image as ImageIcon,
   Play,
   RotateCcw,
   ChevronRight,
@@ -53,6 +44,9 @@ import { EditToolbar } from '@/components/EditToolbar';
 import { SavePuzzleModal } from '@/components/SavePuzzleModal';
 import { GridSizeHintModal } from '@/components/GridSizeHintModal';
 import { DualImageCropper } from '@/components/DualImageCropper';
+import { ActionButton } from '@/components/ActionButton';
+import { ExtractionProgress } from '@/components/ExtractionProgress';
+import { EmptyPuzzleState } from '@/components/EmptyPuzzleState';
 import { useSavedPuzzlesStore } from '@/lib/state/saved-puzzles-store';
 import { Cell, SolveMode, RegionConstraint } from '@/lib/types/puzzle';
 
@@ -65,82 +59,6 @@ interface DualExtractionParams {
   dominoImageUri: string;
   gridImageUri: string;
   sizeHint?: GridSizeHint;
-}
-
-function ActionButton({
-  onPress,
-  icon,
-  label,
-  variant = 'primary',
-  isDark,
-  disabled = false,
-}: {
-  onPress: () => void;
-  icon: React.ReactNode;
-  label: string;
-  variant?: 'primary' | 'secondary' | 'warning';
-  isDark: boolean;
-  disabled?: boolean;
-}) {
-  const scale = useSharedValue(1);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.95);
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1);
-  };
-
-  const getBackgroundColor = () => {
-    if (disabled) return isDark ? '#2a2a2a' : '#e0e0e0';
-    if (variant === 'primary') return '#3B82F6';
-    if (variant === 'warning') return '#F59E0B';
-    return isDark ? '#2a2a2a' : '#f0f0f0';
-  };
-
-  return (
-    <Animated.View style={[animatedStyle, { flex: 1 }]}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        disabled={disabled}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingVertical: 14,
-          paddingHorizontal: 20,
-          borderRadius: 12,
-          backgroundColor: getBackgroundColor(),
-          gap: 8,
-          opacity: disabled ? 0.5 : 1,
-        }}
-      >
-        {icon}
-        <Text
-          style={{
-            fontSize: 15,
-            fontWeight: '600',
-            color: disabled
-              ? '#888'
-              : variant === 'primary' || variant === 'warning'
-                ? '#fff'
-                : isDark
-                  ? '#fff'
-                  : '#333',
-          }}
-        >
-          {label}
-        </Text>
-      </Pressable>
-    </Animated.View>
-  );
 }
 
 export default function HomeScreen() {
@@ -165,15 +83,6 @@ export default function HomeScreen() {
   const [extractionStage, setExtractionStage] = useState<
     'idle' | 'cropping' | 'dominoes' | 'grid' | 'solving'
   >('idle');
-
-  // Extraction stage messages
-  const stageMessages: Record<string, { text: string; progress: number }> = {
-    idle: { text: 'Preparing...', progress: 0 },
-    cropping: { text: 'Processing images...', progress: 15 },
-    dominoes: { text: 'Reading domino pips...', progress: 35 },
-    grid: { text: 'Extracting puzzle grid...', progress: 65 },
-    solving: { text: 'Finding solution...', progress: 90 },
-  };
 
   // Store state
   const puzzle = usePuzzleStore((s) => s.puzzle);
@@ -797,82 +706,7 @@ export default function HomeScreen() {
 
           {/* Loading State with Progress */}
           {isLoading && (
-            <Animated.View
-              entering={FadeIn}
-              className="flex-1 items-center justify-center py-20 px-8"
-            >
-              {/* Stage Icon */}
-              <View
-                className={`w-16 h-16 rounded-full items-center justify-center mb-6 ${isDark ? 'bg-blue-500/20' : 'bg-blue-100'}`}
-              >
-                <ActivityIndicator size="large" color="#3B82F6" />
-              </View>
-
-              {/* Stage Text */}
-              <Text
-                className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}
-              >
-                {stageMessages[extractionStage]?.text || 'Preparing...'}
-              </Text>
-
-              {/* Progress Bar */}
-              <View className="w-full max-w-xs mt-4">
-                <View
-                  className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}
-                >
-                  <Animated.View
-                    style={{
-                      width: `${stageMessages[extractionStage]?.progress || 0}%`,
-                      height: '100%',
-                      backgroundColor: '#3B82F6',
-                      borderRadius: 4,
-                    }}
-                  />
-                </View>
-                <Text
-                  className={`text-xs mt-2 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
-                >
-                  {stageMessages[extractionStage]?.progress || 0}% complete
-                </Text>
-              </View>
-
-              {/* Stage Indicators */}
-              <View className="flex-row items-center justify-center mt-6 gap-2">
-                {(['cropping', 'dominoes', 'grid', 'solving'] as ExtractionStage[]).map((stage, index) => {
-                  const currentIndex = ['idle', 'cropping', 'dominoes', 'grid', 'solving'].indexOf(extractionStage);
-                  const stageIndex = ['idle', 'cropping', 'dominoes', 'grid', 'solving'].indexOf(stage);
-                  const isActive = stageIndex <= currentIndex && extractionStage !== 'idle';
-                  const isCurrent = stage === extractionStage;
-
-                  return (
-                    <View key={stage} className="flex-row items-center">
-                      <View
-                        className={`w-2.5 h-2.5 rounded-full ${
-                          isCurrent
-                            ? 'bg-blue-500'
-                            : isActive
-                              ? 'bg-green-500'
-                              : isDark
-                                ? 'bg-white/20'
-                                : 'bg-gray-300'
-                        }`}
-                      />
-                      {index < 3 && (
-                        <View
-                          className={`w-6 h-0.5 ${
-                            isActive && stageIndex < currentIndex
-                              ? 'bg-green-500'
-                              : isDark
-                                ? 'bg-white/10'
-                                : 'bg-gray-200'
-                          }`}
-                        />
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            </Animated.View>
+            <ExtractionProgress stage={extractionStage} isDark={isDark} />
           )}
 
           {/* Error State */}
@@ -897,71 +731,13 @@ export default function HomeScreen() {
 
           {/* No Puzzle State */}
           {!puzzle && !isLoading && (
-            <Animated.View
-              entering={FadeInDown.delay(200)}
-              className="flex-1 px-5"
-            >
-              <View
-                className={`rounded-2xl p-8 items-center ${isDark ? 'bg-white/5' : 'bg-black/5'}`}
-              >
-                <View
-                  className={`w-20 h-20 rounded-full items-center justify-center mb-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`}
-                >
-                  <Camera size={36} color={isDark ? '#888' : '#666'} />
-                </View>
-                <Text
-                  className={`text-lg font-semibold text-center mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}
-                >
-                  No puzzle loaded
-                </Text>
-                <Text
-                  className={`text-sm text-center ${isDark ? 'text-gray-500' : 'text-gray-600'}`}
-                >
-                  Take a photo or upload a screenshot of a NYT Pips puzzle to get
-                  started
-                </Text>
-              </View>
-
-              {/* Action Buttons */}
-              <View className="flex-row gap-3 mt-6">
-                <ActionButton
-                  onPress={() => router.push('/camera')}
-                  icon={<Camera size={20} color="#fff" />}
-                  label="Camera"
-                  variant="primary"
-                  isDark={isDark}
-                />
-                <ActionButton
-                  onPress={handlePickImage}
-                  icon={
-                    <ImageIcon size={20} color={isDark ? '#fff' : '#333'} />
-                  }
-                  label="Upload"
-                  variant="secondary"
-                  isDark={isDark}
-                />
-              </View>
-
-              {/* Demo Button */}
-              <Pressable
-                onPress={handleUseSample}
-                className="mt-6 py-3 items-center"
-              >
-                <Text className="text-blue-500 font-medium">
-                  Try with sample puzzle
-                </Text>
-              </Pressable>
-
-              {/* L-Shaped Puzzle Button */}
-              <Pressable
-                onPress={handleUseLShapedPuzzle}
-                className="mt-2 py-3 items-center"
-              >
-                <Text className="text-green-500 font-medium">
-                  Try L-shaped puzzle (from screenshot)
-                </Text>
-              </Pressable>
-            </Animated.View>
+            <EmptyPuzzleState
+              isDark={isDark}
+              onCamera={() => router.push('/camera')}
+              onUpload={handlePickImage}
+              onSample={handleUseSample}
+              onLShapedPuzzle={handleUseLShapedPuzzle}
+            />
           )}
 
           {/* Puzzle Loaded State */}
