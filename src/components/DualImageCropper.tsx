@@ -7,6 +7,7 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -31,7 +32,9 @@ import {
   Grid3X3,
   Square,
   Move,
+  Layers,
 } from 'lucide-react-native';
+import { IslandConfig } from '@/lib/types/puzzle';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_CONTAINER_WIDTH = SCREEN_WIDTH - 40;
@@ -42,9 +45,13 @@ interface DualImageCropperProps {
   onComplete: (dominoUri: string, gridUri: string) => void;
   onClose: () => void;
   isDark: boolean;
+  // Multi-island support
+  islandConfigs?: IslandConfig[];
+  onCompleteMulti?: (dominoUri: string, gridUris: string[]) => void;
 }
 
-type CropStep = 'domino' | 'grid' | 'preview';
+// Step can be 'domino', 'grid' (single), 'grid-0', 'grid-1', etc (multi), or 'preview'
+type CropStep = 'domino' | 'grid' | 'preview' | `grid-${number}`;
 
 interface CropRegion {
   x: number;
@@ -216,12 +223,22 @@ export function DualImageCropper({
   onComplete,
   onClose,
   isDark,
+  islandConfigs,
+  onCompleteMulti,
 }: DualImageCropperProps) {
+  const isMultiIsland = !!(islandConfigs && islandConfigs.length > 0);
+  const islandCount = islandConfigs?.length || 1;
+
   const [step, setStep] = useState<CropStep>('domino');
   const [dominoImageUri, setDominoImageUri] = useState<string | null>(null);
   const [gridImageUri, setGridImageUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(null);
+
+  // Multi-island: array of grid image URIs
+  const [gridImageUris, setGridImageUris] = useState<string[]>([]);
+  // Multi-island: current island index being cropped
+  const [currentIslandIndex, setCurrentIslandIndex] = useState(0);
 
   // Default crop regions (will be set when image loads)
   const [dominoCropRegion, setDominoCropRegion] = useState<CropRegion>({
@@ -236,6 +253,8 @@ export function DualImageCropper({
     width: 200,
     height: 200,
   });
+  // Multi-island: array of crop regions for each island
+  const [islandCropRegions, setIslandCropRegions] = useState<CropRegion[]>([]);
 
   // Reset state when modal opens
   React.useEffect(() => {
@@ -243,6 +262,8 @@ export function DualImageCropper({
       setStep('domino');
       setDominoImageUri(null);
       setGridImageUri(null);
+      setGridImageUris([]);
+      setCurrentIslandIndex(0);
       setIsProcessing(false);
 
       // Get image dimensions
@@ -276,16 +297,27 @@ export function DualImageCropper({
           height: displayHeight * 0.28,
         });
 
-        // Grid - positioned with room for NYT app header
+        // Grid - positioned with room for NYT app header (for single island)
         setGridCropRegion({
           x: displayWidth * 0.05,
           y: displayHeight * 0.08,
           width: displayWidth * 0.9,
           height: displayHeight * 0.55,
         });
+
+        // Multi-island: initialize crop regions for each island
+        if (isMultiIsland && islandConfigs) {
+          const regions: CropRegion[] = islandConfigs.map((_, i) => ({
+            x: displayWidth * 0.1,
+            y: displayHeight * 0.1,
+            width: displayWidth * 0.8,
+            height: displayHeight * 0.5,
+          }));
+          setIslandCropRegions(regions);
+        }
       });
     }
-  }, [visible, sourceImageUri]);
+  }, [visible, sourceImageUri, isMultiIsland, islandConfigs]);
 
   const cropImage = useCallback(
     async (region: CropRegion): Promise<string> => {
@@ -320,13 +352,20 @@ export function DualImageCropper({
 
       const croppedUri = await cropImage(dominoCropRegion);
       setDominoImageUri(croppedUri);
-      setStep('grid');
+
+      // Multi-island: go to first island crop, otherwise single grid crop
+      if (isMultiIsland) {
+        setCurrentIslandIndex(0);
+        setStep('grid-0');
+      } else {
+        setStep('grid');
+      }
     } catch (error) {
       console.error('Error cropping domino region:', error);
     } finally {
       setIsProcessing(false);
     }
-  }, [cropImage, dominoCropRegion]);
+  }, [cropImage, dominoCropRegion, isMultiIsland]);
 
   const handleConfirmGridCrop = useCallback(async () => {
     try {
@@ -343,21 +382,65 @@ export function DualImageCropper({
     }
   }, [cropImage, gridCropRegion]);
 
+  // Multi-island: crop handler for each island
+  const handleConfirmIslandCrop = useCallback(async () => {
+    try {
+      setIsProcessing(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const region = islandCropRegions[currentIslandIndex];
+      const croppedUri = await cropImage(region);
+
+      // Add to array of grid URIs
+      const newGridUris = [...gridImageUris, croppedUri];
+      setGridImageUris(newGridUris);
+
+      // Move to next island or preview
+      if (currentIslandIndex < islandCount - 1) {
+        const nextIndex = currentIslandIndex + 1;
+        setCurrentIslandIndex(nextIndex);
+        setStep(`grid-${nextIndex}` as CropStep);
+      } else {
+        setStep('preview');
+      }
+    } catch (error) {
+      console.error('Error cropping island region:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [cropImage, islandCropRegions, currentIslandIndex, gridImageUris, islandCount]);
+
+  // Update island crop region
+  const handleIslandCropRegionChange = useCallback((index: number, region: CropRegion) => {
+    setIslandCropRegions(prev => {
+      const updated = [...prev];
+      updated[index] = region;
+      return updated;
+    });
+  }, []);
+
   const handleReset = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setStep('domino');
     setDominoImageUri(null);
     setGridImageUri(null);
+    setGridImageUris([]);
+    setCurrentIslandIndex(0);
   }, []);
 
   const handleComplete = useCallback(() => {
-    if (dominoImageUri && gridImageUri) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    if (isMultiIsland && onCompleteMulti && dominoImageUri && gridImageUris.length === islandCount) {
+      onCompleteMulti(dominoImageUri, gridImageUris);
+    } else if (dominoImageUri && gridImageUri) {
       onComplete(dominoImageUri, gridImageUri);
     }
-  }, [dominoImageUri, gridImageUri, onComplete]);
+  }, [dominoImageUri, gridImageUri, gridImageUris, isMultiIsland, islandCount, onComplete, onCompleteMulti]);
 
-  const canComplete = dominoImageUri && gridImageUri;
+  const canComplete = isMultiIsland
+    ? dominoImageUri && gridImageUris.length === islandCount
+    : dominoImageUri && gridImageUri;
 
   const renderCropView = (
     title: string,
@@ -522,6 +605,95 @@ export function DualImageCropper({
     </View>
   );
 
+  // Multi-island preview
+  const renderMultiPreview = () => (
+    <View className="flex-1 px-5">
+      <Text
+        className={`text-lg font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}
+      >
+        Review {islandCount} Islands
+      </Text>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
+      >
+        {/* Domino preview */}
+        <View className="mb-4">
+          <Text
+            className={`text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+          >
+            Domino Tray
+          </Text>
+          {dominoImageUri && (
+            <Image
+              source={{ uri: dominoImageUri }}
+              style={{
+                width: '100%',
+                height: 100,
+                borderRadius: 8,
+              }}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+
+        {/* Islands preview */}
+        <View className="flex-row flex-wrap gap-2">
+          {gridImageUris.map((uri, index) => (
+            <View key={index} style={{ width: '48%' }} className="mb-3">
+              <Text
+                className={`text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                Island {index + 1}
+                {islandConfigs?.[index] && ` (${islandConfigs[index].cols}×${islandConfigs[index].rows})`}
+              </Text>
+              <Image
+                source={{ uri }}
+                style={{
+                  width: '100%',
+                  height: 120,
+                  borderRadius: 8,
+                  backgroundColor: isDark ? '#222' : '#eee',
+                }}
+                resizeMode="contain"
+              />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Actions */}
+      <View className="flex-row gap-3 pt-2">
+        <Pressable
+          onPress={handleReset}
+          className="flex-1 py-4 rounded-xl items-center flex-row justify-center"
+          style={{ backgroundColor: isDark ? '#333' : '#e5e5e5' }}
+        >
+          <RefreshCw size={20} color={isDark ? '#fff' : '#333'} />
+          <Text
+            className={`font-bold text-base ml-2 ${isDark ? 'text-white' : 'text-gray-900'}`}
+          >
+            Redo
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={handleComplete}
+          disabled={!canComplete}
+          className="flex-1 py-4 rounded-xl items-center flex-row justify-center"
+          style={{
+            backgroundColor: canComplete ? '#22C55E' : '#666',
+            opacity: canComplete ? 1 : 0.5,
+          }}
+        >
+          <Check size={20} color="#fff" />
+          <Text className="text-white font-bold text-base ml-2">Analyze</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
   return (
     <Modal
       visible={visible}
@@ -549,10 +721,12 @@ export function DualImageCropper({
               className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}
             >
               {step === 'domino'
-                ? 'Step 1 of 2'
+                ? `Step 1 of ${isMultiIsland ? islandCount + 1 : 2}`
                 : step === 'grid'
                   ? 'Step 2 of 2'
-                  : 'Preview'}
+                  : step.startsWith('grid-')
+                    ? `Step ${currentIslandIndex + 2} of ${islandCount + 1}`
+                    : 'Preview'}
             </Text>
             <View style={{ width: 40 }} />
           </View>
@@ -578,7 +752,18 @@ export function DualImageCropper({
               <Grid3X3 size={20} color="#fff" />
             )}
 
-          {step === 'preview' && renderPreview()}
+          {/* Multi-island: render crop for current island */}
+          {step.startsWith('grid-') && islandCropRegions[currentIslandIndex] &&
+            renderCropView(
+              `Crop Island ${currentIslandIndex + 1}${islandConfigs?.[currentIslandIndex] ? ` (${islandConfigs[currentIslandIndex].cols}×${islandConfigs[currentIslandIndex].rows})` : ''}`,
+              `Island ${currentIslandIndex + 1} of ${islandCount} - Drag to move, corner to resize`,
+              islandCropRegions[currentIslandIndex],
+              (region) => handleIslandCropRegionChange(currentIslandIndex, region),
+              handleConfirmIslandCrop,
+              <Layers size={20} color="#fff" />
+            )}
+
+          {step === 'preview' && (isMultiIsland ? renderMultiPreview() : renderPreview())}
         </SafeAreaView>
       </View>
     </Modal>

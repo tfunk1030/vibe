@@ -10,9 +10,24 @@ import {
   REGION_COLORS,
   cellKey,
   ExtractionConfidence,
+  IslandConfig,
+  IslandMetadata,
 } from '../types/puzzle';
 
-const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY;
+// Read API key dynamically at runtime to ensure it's available
+const getOpenRouterApiKey = (): string | undefined => {
+  const key = process.env.EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY;
+  // Trim whitespace that might have been accidentally added
+  const trimmed = key?.trim();
+  
+  // Validate OpenRouter API key format (should start with sk-or-v1-)
+  if (trimmed && !trimmed.startsWith('sk-or-v1-') && trimmed.length > 0) {
+    console.warn('[AI] API key format may be incorrect. OpenRouter keys typically start with "sk-or-v1-"');
+  }
+  
+  return trimmed;
+};
+
 const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
 interface ExtractedCell {
@@ -220,7 +235,8 @@ export interface DetectedDimensions {
 }
 
 export async function detectGridDimensions(imageBase64: string): Promise<DetectedDimensions> {
-  if (!OPENROUTER_API_KEY) {
+  const apiKey = getOpenRouterApiKey();
+  if (!apiKey) {
     throw new Error('OpenRouter API key not configured');
   }
 
@@ -230,7 +246,7 @@ export async function detectGridDimensions(imageBase64: string): Promise<Detecte
     const response = await fetch(OPENROUTER_ENDPOINT, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://vibecode.com',
         'X-Title': 'Pips Solver',
@@ -264,7 +280,24 @@ export async function detectGridDimensions(imageBase64: string): Promise<Detecte
     });
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorText = await response.text();
+      let errorMessage = `API error: ${response.status}`;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error?.message) {
+          errorMessage = `OpenRouter API error: ${errorData.error.message}`;
+          if (response.status === 401) {
+            errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab.';
+          }
+        }
+      } catch {
+        if (errorText) {
+          errorMessage += ` - ${errorText}`;
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -405,10 +438,11 @@ async function extractDominoesFromImage(
   base64Image: string,
   expectedCount?: number
 ): Promise<ExtractedDomino[]> {
+  const apiKey = getOpenRouterApiKey();
   console.log('[AI] Extracting dominoes with GPT-5.2...');
-  console.log('[AI] API Key check - present:', !!OPENROUTER_API_KEY, 'length:', OPENROUTER_API_KEY?.length || 0);
+  console.log('[AI] API Key check - present:', !!apiKey, 'length:', apiKey?.length || 0);
 
-  if (!OPENROUTER_API_KEY) {
+  if (!apiKey) {
     throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
   }
 
@@ -424,7 +458,7 @@ If you count a different number, re-check carefully before outputting.`;
   const response = await fetch(OPENROUTER_ENDPOINT, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://vibecode.com',
       'X-Title': 'Pips Solver',
@@ -460,7 +494,26 @@ If you count a different number, re-check carefully before outputting.`;
   if (!response.ok) {
     const errorText = await response.text();
     console.error('[AI] GPT-5.2 API error:', errorText);
-    throw new Error(`GPT-5.2 API error: ${response.status}`);
+    let errorMessage = `GPT-5.2 API error: ${response.status}`;
+    
+    // Parse error response for more details
+    try {
+      const errorData = JSON.parse(errorText);
+      if (errorData.error?.message) {
+        errorMessage = `OpenRouter API error: ${errorData.error.message}`;
+        // Provide helpful guidance for common errors
+        if (errorData.error.message.includes('User not found') || response.status === 401) {
+          errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab and make sure it\'s correct.';
+        }
+      }
+    } catch {
+      // If parsing fails, use the raw error text
+      if (errorText) {
+        errorMessage += ` - ${errorText}`;
+      }
+    }
+    
+    throw new Error(errorMessage);
   }
 
   const data = await response.json();
@@ -816,10 +869,15 @@ Your output MUST have:
 
   console.log(`[AI] Using model: ${model}`);
 
+  const apiKey = getOpenRouterApiKey();
+  if (!apiKey) {
+    throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
+  }
+
   const response = await fetch(OPENROUTER_ENDPOINT, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://vibecode.com',
       'X-Title': 'Pips Solver',
@@ -865,7 +923,23 @@ CRITICAL RULES:
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`[AI] ${model} grid API error:`, errorText);
-    throw new Error(`Gemini API error: ${response.status}`);
+    let errorMessage = `Gemini API error: ${response.status}`;
+    
+    try {
+      const errorData = JSON.parse(errorText);
+      if (errorData.error?.message) {
+        errorMessage = `OpenRouter API error: ${errorData.error.message}`;
+        if (response.status === 401) {
+          errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab.';
+        }
+      }
+    } catch {
+      if (errorText) {
+        errorMessage += ` - ${errorText}`;
+      }
+    }
+    
+    throw new Error(errorMessage);
   }
 
   const data = await response.json();
@@ -1150,8 +1224,9 @@ export async function extractPuzzleFromDualImages(
   sizeHint?: GridSizeHint,
   onProgress?: (stage: ExtractionStage) => void
 ): Promise<PuzzleData> {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('OpenRouter API key not configured. Please add it in the ENV tab.');
+  const apiKey = getOpenRouterApiKey();
+  if (!apiKey) {
+    throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
   }
 
   console.log('[AI] Starting dual image extraction...');
@@ -1275,6 +1350,200 @@ export async function extractPuzzleFromDualImages(
   }
 
   throw lastError || new Error('Failed to extract puzzle after multiple attempts');
+}
+
+// ==========================================
+// Multi-Island Extraction
+// ==========================================
+export async function extractMultiIslandPuzzle(
+  dominoImageUri: string,
+  gridImageUris: string[],
+  islandConfigs: IslandConfig[],
+  onProgress?: (stage: ExtractionStage, islandIndex?: number) => void
+): Promise<PuzzleData> {
+  const apiKey = getOpenRouterApiKey();
+  if (!apiKey) {
+    throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
+  }
+
+  console.log('[AI] Starting multi-island extraction...', { islandCount: islandConfigs.length });
+  onProgress?.('cropping');
+
+  // Validate inputs
+  if (gridImageUris.length !== islandConfigs.length) {
+    throw new Error(`Mismatch: ${gridImageUris.length} images but ${islandConfigs.length} island configs`);
+  }
+
+  // Read domino image as base64
+  const dominoBase64 = await FileSystem.readAsStringAsync(dominoImageUri, {
+    encoding: 'base64',
+  });
+
+  // Calculate total expected dominoes (total cells / 2)
+  const totalCells = islandConfigs.reduce((sum, cfg) => sum + cfg.cols * cfg.rows, 0);
+  const expectedDominoes = Math.floor(totalCells / 2);
+
+  // Extract dominoes from single domino image
+  onProgress?.('dominoes');
+  console.log('[AI] Extracting dominoes...');
+  const dominoResult = await extractDominoesFromImage(dominoBase64, expectedDominoes);
+
+  console.log(`[AI] Found ${dominoResult.length} dominoes (expected ${expectedDominoes})`);
+
+  // Extract grid from each island
+  const islandResults: { gridData: GridExtractionResponse; regions: ExtractedRegion[]; validCells: ExtractedCell[] }[] = [];
+
+  for (let i = 0; i < gridImageUris.length; i++) {
+    onProgress?.('grid', i);
+    console.log(`[AI] Extracting island ${i + 1}/${gridImageUris.length}...`);
+
+    const gridBase64 = await FileSystem.readAsStringAsync(gridImageUris[i], {
+      encoding: 'base64',
+    });
+
+    const sizeHint: GridSizeHint = {
+      cols: islandConfigs[i].cols,
+      rows: islandConfigs[i].rows,
+      dominoCount: Math.floor((islandConfigs[i].cols * islandConfigs[i].rows) / 2),
+    };
+
+    const gridData = await extractGridFromImage(gridBase64, sizeHint, 1);
+    const { regions, validCells } = convertGridResponseToRegions(gridData);
+
+    islandResults.push({ gridData, regions, validCells });
+  }
+
+  // Merge islands with coordinate offsets
+  const GAP_COLUMNS = 1; // Gap between islands
+  const mergedData = mergeIslands(islandResults, islandConfigs, GAP_COLUMNS);
+
+  // Build confidence metadata
+  const confidence: ExtractionConfidence = {
+    overall: 0.9, // Multi-island doesn't do two-pass verification yet
+    dominoConfidence: 1.0,
+    gridConfidence: 0.9,
+    warnings: [],
+    uncertainCells: [],
+    uncertainRegions: [],
+  };
+
+  // Build puzzle data
+  const puzzleData: PuzzleData = {
+    width: mergedData.totalWidth,
+    height: mergedData.maxHeight,
+    validCells: mergedData.validCells,
+    regions: mergedData.regions,
+    availableDominoes: dominoResult.map((d, index) => {
+      const pips: [number, number] = [
+        Math.max(0, Math.min(6, d.pips[0] ?? 0)),
+        Math.max(0, Math.min(6, d.pips[1] ?? 0)),
+      ];
+      return {
+        id: `${dominoId(pips)}-${index}`,
+        pips,
+      };
+    }),
+    blockedCells: [],
+    confidence,
+    islands: mergedData.islands,
+  };
+
+  console.log('[AI] Multi-island extraction successful!', {
+    islands: puzzleData.islands?.length,
+    dominoes: puzzleData.availableDominoes.length,
+    cells: puzzleData.validCells.length,
+    regions: puzzleData.regions.length,
+  });
+
+  return puzzleData;
+}
+
+// Merge multiple islands into one composite puzzle
+function mergeIslands(
+  islandResults: { gridData: GridExtractionResponse; regions: ExtractedRegion[]; validCells: ExtractedCell[] }[],
+  configs: IslandConfig[],
+  gap: number
+): {
+  validCells: Cell[];
+  regions: Region[];
+  islands: IslandMetadata[];
+  totalWidth: number;
+  maxHeight: number;
+} {
+  let currentOffset = 0;
+  const allCells: Cell[] = [];
+  const allRegions: Region[] = [];
+  const islands: IslandMetadata[] = [];
+  let maxHeight = 0;
+  let regionColorIndex = 0;
+
+  for (let i = 0; i < islandResults.length; i++) {
+    const result = islandResults[i];
+    const config = configs[i];
+
+    // Track island metadata
+    islands.push({
+      id: `island-${i}`,
+      startCol: currentOffset,
+      width: config.cols,
+      height: config.rows,
+      name: `Island ${i + 1}`,
+    });
+
+    // Update max height
+    maxHeight = Math.max(maxHeight, config.rows);
+
+    // Offset all cells
+    for (const cell of result.validCells) {
+      allCells.push({
+        row: cell.row,
+        col: cell.col + currentOffset,
+      });
+    }
+
+    // Offset all regions
+    for (const region of result.regions) {
+      const offsetCells = region.cells.map(c => ({
+        row: c.row,
+        col: c.col + currentOffset,
+      }));
+
+      // Normalize constraint type
+      const constraintTypeMap: Record<string, ConstraintType> = {
+        'sum': 'sum',
+        'equal': 'equal',
+        'different': 'different',
+        'greater': 'greater',
+        'less': 'less',
+        'any': 'any',
+      };
+
+      const constraintType = constraintTypeMap[region.constraint_type] || 'any';
+
+      allRegions.push({
+        id: `island-${i}-${region.region_id || `region-${allRegions.length}`}`,
+        cells: offsetCells,
+        color: REGION_COLORS[regionColorIndex % REGION_COLORS.length],
+        constraint: {
+          type: constraintType,
+          value: region.constraint_value,
+        },
+      });
+
+      regionColorIndex++;
+    }
+
+    // Move offset for next island (width + gap)
+    currentOffset += config.cols + gap;
+  }
+
+  return {
+    validCells: allCells,
+    regions: allRegions,
+    islands,
+    totalWidth: currentOffset - gap, // Remove trailing gap
+    maxHeight,
+  };
 }
 
 function buildPuzzleData(
@@ -1497,8 +1766,9 @@ export async function extractPuzzleFromImage(
   imageUri: string,
   sizeHint?: GridSizeHint
 ): Promise<PuzzleData> {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('OpenRouter API key not configured. Please add it in the ENV tab.');
+  const apiKey = getOpenRouterApiKey();
+  if (!apiKey) {
+    throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
   }
 
   // Read image as base64
@@ -1606,11 +1876,16 @@ ${EXTRACTION_PROMPT}`;
   // Increase temperature slightly on retries to get different results
   const temperature = 0.1 + (attempt - 1) * 0.1;
 
+  const apiKey = getOpenRouterApiKey();
+  if (!apiKey) {
+    throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
+  }
+
   // Use Gemini 3 Flash Preview for grid/regions (fast, cost-effective)
   const response = await fetch(OPENROUTER_ENDPOINT, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://vibecode.com',
       'X-Title': 'Pips Solver',
@@ -1646,7 +1921,23 @@ ${EXTRACTION_PROMPT}`;
   if (!response.ok) {
     const errorText = await response.text();
     console.error('[AI] API error:', errorText);
-    throw new Error(`Failed to analyze image: ${response.status}`);
+    let errorMessage = `Failed to analyze image: ${response.status}`;
+    
+    try {
+      const errorData = JSON.parse(errorText);
+      if (errorData.error?.message) {
+        errorMessage = `OpenRouter API error: ${errorData.error.message}`;
+        if (response.status === 401) {
+          errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab.';
+        }
+      }
+    } catch {
+      if (errorText) {
+        errorMessage += ` - ${errorText}`;
+      }
+    }
+    
+    throw new Error(errorMessage);
   }
 
   const data = await response.json();

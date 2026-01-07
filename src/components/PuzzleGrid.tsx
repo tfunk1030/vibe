@@ -15,6 +15,7 @@ import {
   cellKey,
   constraintLabel,
   ExtractionConfidence,
+  IslandMetadata,
 } from '@/lib/types/puzzle';
 import { GridEditMode } from '@/lib/state/puzzle-store';
 
@@ -29,6 +30,7 @@ interface PuzzleGridProps {
   gridEditMode?: GridEditMode;
   selectedRegionForAssign?: string | null;
   onEmptyCellPress?: (cell: Cell) => void;
+  showIslandSeparators?: boolean;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -354,6 +356,7 @@ export function PuzzleGrid({
   gridEditMode = 'none',
   selectedRegionForAssign,
   onEmptyCellPress,
+  showIslandSeparators = true,
 }: PuzzleGridProps) {
   // Calculate cell size based on grid dimensions
   // For larger grids (7x9+), we need smaller cells to fit
@@ -484,6 +487,30 @@ export function PuzzleGrid({
             isSelectedRegion={isEditMode && regionInfo?.regionId === selectedRegionForAssign}
             isUncertain={uncertainCellKeys.has(key)}
             isUncertainRegion={regionInfo?.regionId ? uncertainRegionIds.has(regionInfo.regionId) : false}
+          />
+        );
+      })}
+
+      {/* Island separators - render vertical lines between islands */}
+      {showIslandSeparators && puzzle.islands && puzzle.islands.length > 1 && puzzle.islands.map((island, index) => {
+        // Skip the first island (no separator before it)
+        if (index === 0) return null;
+
+        // Position separator at the start of this island (which is right after previous island + gap)
+        const separatorX = island.startCol * cellSize - cellSize / 2;
+
+        return (
+          <View
+            key={`island-separator-${index}`}
+            style={{
+              position: 'absolute',
+              left: separatorX,
+              top: 0,
+              width: 2,
+              height: gridHeight,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
+              borderRadius: 1,
+            }}
           />
         );
       })}

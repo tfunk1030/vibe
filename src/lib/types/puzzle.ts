@@ -45,6 +45,22 @@ export interface ExtractionConfidence {
   uncertainRegions: string[]; // Region IDs that have low confidence
 }
 
+// Island metadata for multi-island puzzles
+export interface IslandMetadata {
+  id: string;
+  startCol: number;    // Column offset where this island starts
+  width: number;       // Island's own width
+  height: number;      // Island's own height
+  name?: string;       // Optional display name (e.g., "A", "L")
+}
+
+// Island configuration for setup flow
+export interface IslandConfig {
+  id: string;
+  cols: number;
+  rows: number;
+}
+
 export interface PuzzleData {
   // Grid dimensions (for bounding box)
   width: number;
@@ -59,6 +75,8 @@ export interface PuzzleData {
   blockedCells: Cell[];
   // Extraction confidence metadata (optional, only from AI extraction)
   confidence?: ExtractionConfidence;
+  // Island metadata for multi-island puzzles (optional)
+  islands?: IslandMetadata[];
 }
 
 export interface PuzzleSolution {

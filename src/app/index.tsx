@@ -32,7 +32,7 @@ import {
 
 import { useColorScheme } from '@/lib/useColorScheme';
 import { usePuzzleStore, GridEditMode } from '@/lib/state/puzzle-store';
-import { extractPuzzleFromImage, extractPuzzleFromDualImages, createSamplePuzzle, createLShapedPuzzle, GridSizeHint, ExtractionStage } from '@/lib/services/gemini';
+import { extractPuzzleFromImage, extractPuzzleFromDualImages, extractMultiIslandPuzzle, createSamplePuzzle, createLShapedPuzzle, GridSizeHint, ExtractionStage } from '@/lib/services/gemini';
 import { solvePuzzle, getHintForCell, verifyPartialSolution } from '@/lib/services/solver';
 import { PuzzleGrid } from '@/components/PuzzleGrid';
 import { DominoTray } from '@/components/DominoTray';
@@ -44,11 +44,12 @@ import { EditToolbar } from '@/components/EditToolbar';
 import { SavePuzzleModal } from '@/components/SavePuzzleModal';
 import { GridSizeHintModal } from '@/components/GridSizeHintModal';
 import { DualImageCropper } from '@/components/DualImageCropper';
+import { IslandConfigModal } from '@/components/IslandConfigModal';
 import { ActionButton } from '@/components/ActionButton';
 import { ExtractionProgress } from '@/components/ExtractionProgress';
 import { EmptyPuzzleState } from '@/components/EmptyPuzzleState';
 import { useSavedPuzzlesStore } from '@/lib/state/saved-puzzles-store';
-import { Cell, SolveMode, RegionConstraint } from '@/lib/types/puzzle';
+import { Cell, SolveMode, RegionConstraint, IslandConfig } from '@/lib/types/puzzle';
 
 interface ExtractionParams {
   imageUri: string;
@@ -59,6 +60,12 @@ interface DualExtractionParams {
   dominoImageUri: string;
   gridImageUri: string;
   sizeHint?: GridSizeHint;
+}
+
+interface MultiIslandExtractionParams {
+  dominoImageUri: string;
+  gridImageUris: string[];
+  islandConfigs: IslandConfig[];
 }
 
 export default function HomeScreen() {
@@ -83,6 +90,12 @@ export default function HomeScreen() {
   const [extractionStage, setExtractionStage] = useState<
     'idle' | 'cropping' | 'dominoes' | 'grid' | 'solving'
   >('idle');
+
+  // Multi-island state
+  const [showIslandModeChoice, setShowIslandModeChoice] = useState(false);
+  const [showIslandConfigModal, setShowIslandConfigModal] = useState(false);
+  const [islandConfigs, setIslandConfigs] = useState<IslandConfig[]>([]);
+  const [isMultiIslandMode, setIsMultiIslandMode] = useState(false);
 
   // Store state
   const puzzle = usePuzzleStore((s) => s.puzzle);
@@ -198,6 +211,43 @@ export default function HomeScreen() {
 
   const { mutate: extractDualPuzzle } = dualExtractMutation;
 
+  // Multi-island extraction mutation
+  const multiIslandExtractMutation = useMutation({
+    mutationFn: (params: MultiIslandExtractionParams) =>
+      extractMultiIslandPuzzle(
+        params.dominoImageUri,
+        params.gridImageUris,
+        params.islandConfigs,
+        (stage, islandIndex) => setExtractionStage(stage)
+      ),
+    onMutate: () => {
+      setLoading(true);
+      setError(null);
+      setExtractionStage('idle');
+    },
+    onSuccess: (puzzleData) => {
+      setExtractionStage('solving');
+      setPuzzle(puzzleData);
+      // Auto-solve
+      const sol = solvePuzzle(puzzleData);
+      setSolution(sol);
+      if (!sol.isValid) {
+        setError(sol.error || 'Could not solve puzzle - try editing the puzzle data');
+      }
+      setLoading(false);
+      setExtractionStage('idle');
+      setIsMultiIslandMode(false);
+      setIslandConfigs([]);
+    },
+    onError: (err: Error) => {
+      setError(err.message);
+      setLoading(false);
+      setExtractionStage('idle');
+    },
+  });
+
+  const { mutate: extractMultiIsland } = multiIslandExtractMutation;
+
   // Pick image from library
   const handlePickImage = useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -208,9 +258,30 @@ export default function HomeScreen() {
     if (!result.canceled && result.assets[0]) {
       setPendingImageUri(result.assets[0].uri);
       setImageUri(result.assets[0].uri);
-      setShowSizeHintModal(true);
+      // Show island mode choice first
+      setShowIslandModeChoice(true);
     }
   }, [setImageUri]);
+
+  // Handle island mode choice
+  const handleSingleIsland = useCallback(() => {
+    setShowIslandModeChoice(false);
+    setIsMultiIslandMode(false);
+    setShowSizeHintModal(true);
+  }, []);
+
+  const handleMultipleIslands = useCallback(() => {
+    setShowIslandModeChoice(false);
+    setIsMultiIslandMode(true);
+    setShowIslandConfigModal(true);
+  }, []);
+
+  // Handle island config confirm
+  const handleIslandConfigConfirm = useCallback((configs: IslandConfig[]) => {
+    setShowIslandConfigModal(false);
+    setIslandConfigs(configs);
+    setShowDualCropper(true);
+  }, []);
 
   // Handle size hint confirm - now opens dual cropper
   const handleSizeHintConfirm = useCallback(
@@ -240,7 +311,7 @@ export default function HomeScreen() {
     setPendingSizeHint(null);
   }, []);
 
-  // Handle dual cropper complete
+  // Handle dual cropper complete (single island)
   const handleDualCropperComplete = useCallback(
     (dominoUri: string, gridUri: string) => {
       setShowDualCropper(false);
@@ -255,11 +326,28 @@ export default function HomeScreen() {
     [extractDualPuzzle, pendingSizeHint]
   );
 
+  // Handle multi-island cropper complete
+  const handleMultiIslandCropperComplete = useCallback(
+    (dominoUri: string, gridUris: string[]) => {
+      setShowDualCropper(false);
+      extractMultiIsland({
+        dominoImageUri: dominoUri,
+        gridImageUris: gridUris,
+        islandConfigs: islandConfigs,
+      });
+      setPendingImageUri(null);
+      setPendingSizeHint(null);
+    },
+    [extractMultiIsland, islandConfigs]
+  );
+
   // Handle dual cropper close
   const handleDualCropperClose = useCallback(() => {
     setShowDualCropper(false);
     setPendingImageUri(null);
     setPendingSizeHint(null);
+    setIsMultiIslandMode(false);
+    setIslandConfigs([]);
   }, []);
 
   // Use L-shaped puzzle for testing
@@ -975,6 +1063,139 @@ export default function HomeScreen() {
         </Pressable>
       </Modal>
 
+      {/* Island Mode Choice Modal */}
+      <Modal
+        visible={showIslandModeChoice}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowIslandModeChoice(false);
+          setPendingImageUri(null);
+        }}
+      >
+        <Pressable
+          onPress={() => {
+            setShowIslandModeChoice(false);
+            setPendingImageUri(null);
+          }}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: isDark ? '#1a1a1a' : '#fff',
+              borderRadius: 20,
+              padding: 24,
+              width: '100%',
+              maxWidth: 340,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: '700',
+                color: isDark ? '#fff' : '#000',
+                textAlign: 'center',
+                marginBottom: 8,
+              }}
+            >
+              Puzzle Type
+            </Text>
+            <Text
+              style={{
+                fontSize: 14,
+                color: isDark ? '#888' : '#666',
+                textAlign: 'center',
+                marginBottom: 20,
+              }}
+            >
+              Does this puzzle have multiple separate islands?
+            </Text>
+
+            <Pressable
+              onPress={handleSingleIsland}
+              style={{
+                backgroundColor: '#3B82F6',
+                paddingVertical: 14,
+                borderRadius: 12,
+                marginBottom: 12,
+              }}
+            >
+              <Text
+                style={{
+                  color: '#fff',
+                  fontWeight: '600',
+                  fontSize: 16,
+                  textAlign: 'center',
+                }}
+              >
+                Single Grid
+              </Text>
+              <Text
+                style={{
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: 12,
+                  textAlign: 'center',
+                  marginTop: 2,
+                }}
+              >
+                Standard puzzle with one connected area
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleMultipleIslands}
+              style={{
+                backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0',
+                paddingVertical: 14,
+                borderRadius: 12,
+                borderWidth: 2,
+                borderColor: '#8B5CF6',
+              }}
+            >
+              <Text
+                style={{
+                  color: isDark ? '#fff' : '#333',
+                  fontWeight: '600',
+                  fontSize: 16,
+                  textAlign: 'center',
+                }}
+              >
+                Multiple Islands
+              </Text>
+              <Text
+                style={{
+                  color: isDark ? '#888' : '#666',
+                  fontSize: 12,
+                  textAlign: 'center',
+                  marginTop: 2,
+                }}
+              >
+                Separate grids sharing one domino pool
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Island Config Modal */}
+      <IslandConfigModal
+        visible={showIslandConfigModal}
+        onConfirm={handleIslandConfigConfirm}
+        onClose={() => {
+          setShowIslandConfigModal(false);
+          setIsMultiIslandMode(false);
+          setPendingImageUri(null);
+        }}
+        isDark={isDark}
+      />
+
       {/* Grid Size Hint Modal */}
       <GridSizeHintModal
         visible={showSizeHintModal}
@@ -992,6 +1213,8 @@ export default function HomeScreen() {
         onComplete={handleDualCropperComplete}
         onClose={handleDualCropperClose}
         isDark={isDark}
+        islandConfigs={isMultiIslandMode ? islandConfigs : undefined}
+        onCompleteMulti={isMultiIslandMode ? handleMultiIslandCropperComplete : undefined}
       />
     </View>
   );
