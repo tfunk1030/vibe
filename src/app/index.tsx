@@ -41,7 +41,7 @@ import {
 
 import { useColorScheme } from '@/lib/useColorScheme';
 import { usePuzzleStore, GridEditMode } from '@/lib/state/puzzle-store';
-import { extractPuzzleFromImage, extractPuzzleFromDualImages, createSamplePuzzle, createLShapedPuzzle, GridSizeHint } from '@/lib/services/gemini';
+import { extractPuzzleFromImage, extractPuzzleFromDualImages, createSamplePuzzle, createLShapedPuzzle, GridSizeHint, ExtractionStage } from '@/lib/services/gemini';
 import { solvePuzzle, getHintForCell, verifyPartialSolution } from '@/lib/services/solver';
 import { PuzzleGrid } from '@/components/PuzzleGrid';
 import { DominoTray } from '@/components/DominoTray';
@@ -161,6 +161,18 @@ export default function HomeScreen() {
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
   const [showDualCropper, setShowDualCropper] = useState(false);
   const [pendingSizeHint, setPendingSizeHint] = useState<GridSizeHint | null>(null);
+  const [extractionStage, setExtractionStage] = useState<
+    'idle' | 'cropping' | 'dominoes' | 'grid' | 'solving'
+  >('idle');
+
+  // Extraction stage messages
+  const stageMessages: Record<string, { text: string; progress: number }> = {
+    idle: { text: 'Preparing...', progress: 0 },
+    cropping: { text: 'Processing images...', progress: 15 },
+    dominoes: { text: 'Reading domino pips...', progress: 35 },
+    grid: { text: 'Extracting puzzle grid...', progress: 65 },
+    solving: { text: 'Finding solution...', progress: 90 },
+  };
 
   // Store state
   const puzzle = usePuzzleStore((s) => s.puzzle);
@@ -243,12 +255,19 @@ export default function HomeScreen() {
   // Dual extraction mutation (separate domino and grid images)
   const dualExtractMutation = useMutation({
     mutationFn: (params: DualExtractionParams) =>
-      extractPuzzleFromDualImages(params.dominoImageUri, params.gridImageUri, params.sizeHint),
+      extractPuzzleFromDualImages(
+        params.dominoImageUri,
+        params.gridImageUri,
+        params.sizeHint,
+        (stage) => setExtractionStage(stage)
+      ),
     onMutate: () => {
       setLoading(true);
       setError(null);
+      setExtractionStage('idle');
     },
     onSuccess: (puzzleData) => {
+      setExtractionStage('solving');
       setPuzzle(puzzleData);
       // Auto-solve
       const sol = solvePuzzle(puzzleData);
@@ -257,10 +276,12 @@ export default function HomeScreen() {
         setError(sol.error || 'Could not solve puzzle - try editing the puzzle data');
       }
       setLoading(false);
+      setExtractionStage('idle');
     },
     onError: (err: Error) => {
       setError(err.message);
       setLoading(false);
+      setExtractionStage('idle');
     },
   });
 
@@ -759,16 +780,84 @@ export default function HomeScreen() {
             </View>
           </Animated.View>
 
-          {/* Loading State */}
+          {/* Loading State with Progress */}
           {isLoading && (
-            <View className="flex-1 items-center justify-center py-20">
-              <ActivityIndicator size="large" color="#3B82F6" />
-              <Text
-                className={`mt-4 text-base ${isDark ? 'text-gray-400' : 'text-gray-600'}`}
+            <Animated.View
+              entering={FadeIn}
+              className="flex-1 items-center justify-center py-20 px-8"
+            >
+              {/* Stage Icon */}
+              <View
+                className={`w-16 h-16 rounded-full items-center justify-center mb-6 ${isDark ? 'bg-blue-500/20' : 'bg-blue-100'}`}
               >
-                Analyzing puzzle...
+                <ActivityIndicator size="large" color="#3B82F6" />
+              </View>
+
+              {/* Stage Text */}
+              <Text
+                className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}
+              >
+                {stageMessages[extractionStage]?.text || 'Preparing...'}
               </Text>
-            </View>
+
+              {/* Progress Bar */}
+              <View className="w-full max-w-xs mt-4">
+                <View
+                  className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}
+                >
+                  <Animated.View
+                    style={{
+                      width: `${stageMessages[extractionStage]?.progress || 0}%`,
+                      height: '100%',
+                      backgroundColor: '#3B82F6',
+                      borderRadius: 4,
+                    }}
+                  />
+                </View>
+                <Text
+                  className={`text-xs mt-2 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+                >
+                  {stageMessages[extractionStage]?.progress || 0}% complete
+                </Text>
+              </View>
+
+              {/* Stage Indicators */}
+              <View className="flex-row items-center justify-center mt-6 gap-2">
+                {(['cropping', 'dominoes', 'grid', 'solving'] as ExtractionStage[]).map((stage, index) => {
+                  const currentIndex = ['idle', 'cropping', 'dominoes', 'grid', 'solving'].indexOf(extractionStage);
+                  const stageIndex = ['idle', 'cropping', 'dominoes', 'grid', 'solving'].indexOf(stage);
+                  const isActive = stageIndex <= currentIndex && extractionStage !== 'idle';
+                  const isCurrent = stage === extractionStage;
+
+                  return (
+                    <View key={stage} className="flex-row items-center">
+                      <View
+                        className={`w-2.5 h-2.5 rounded-full ${
+                          isCurrent
+                            ? 'bg-blue-500'
+                            : isActive
+                              ? 'bg-green-500'
+                              : isDark
+                                ? 'bg-white/20'
+                                : 'bg-gray-300'
+                        }`}
+                      />
+                      {index < 3 && (
+                        <View
+                          className={`w-6 h-0.5 ${
+                            isActive && stageIndex < currentIndex
+                              ? 'bg-green-500'
+                              : isDark
+                                ? 'bg-white/10'
+                                : 'bg-gray-200'
+                          }`}
+                        />
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </Animated.View>
           )}
 
           {/* Error State */}
@@ -1100,6 +1189,7 @@ export default function HomeScreen() {
         onSkip={handleSizeHintSkip}
         onClose={handleSizeHintClose}
         isDark={isDark}
+        imageUri={pendingImageUri ?? undefined}
       />
 
       {/* Dual Image Cropper Modal */}

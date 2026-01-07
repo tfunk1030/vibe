@@ -265,20 +265,22 @@ export function DualImageCropper({
           displayHeight,
         });
 
-        // Set default crop regions
-        // Domino tray is typically at bottom, wide and short
+        // Set default crop regions optimized for NYT Pips layout
+        // NYT puzzles have consistent layout: grid top ~60%, domino tray bottom ~35%
+
+        // Domino tray - positioned for NYT's bottom tray area
         setDominoCropRegion({
-          x: 10,
-          y: displayHeight * 0.65,
-          width: displayWidth - 20,
-          height: displayHeight * 0.3,
+          x: displayWidth * 0.05,
+          y: displayHeight * 0.68,
+          width: displayWidth * 0.9,
+          height: displayHeight * 0.28,
         });
 
-        // Grid is typically at top, more square
+        // Grid - positioned with room for NYT app header
         setGridCropRegion({
-          x: 10,
-          y: 10,
-          width: displayWidth - 20,
+          x: displayWidth * 0.05,
+          y: displayHeight * 0.08,
+          width: displayWidth * 0.9,
           height: displayHeight * 0.55,
         });
       });

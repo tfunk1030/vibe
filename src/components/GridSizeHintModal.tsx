@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, Modal } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
-import { X, Grid3X3, Minus, Plus, Sparkles } from 'lucide-react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, Pressable, Modal, ActivityIndicator } from 'react-native';
+import Animated, { SlideInDown, SlideOutDown, FadeIn } from 'react-native-reanimated';
+import { X, Grid3X3, Minus, Plus, Sparkles, Wand2, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import * as FileSystem from 'expo-file-system';
+import { detectGridDimensions, DetectedDimensions } from '@/lib/services/gemini';
 
 interface GridSizeHintModalProps {
   visible: boolean;
@@ -10,6 +12,7 @@ interface GridSizeHintModalProps {
   onSkip: () => void;
   onClose: () => void;
   isDark: boolean;
+  imageUri?: string; // Optional image URI for auto-detection
 }
 
 function NumberStepper({
@@ -119,10 +122,55 @@ export function GridSizeHintModal({
   onSkip,
   onClose,
   isDark,
+  imageUri,
 }: GridSizeHintModalProps) {
   const [cols, setCols] = useState(5);
   const [rows, setRows] = useState(5);
   const [dominoCount, setDominoCount] = useState(8);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [detectionResult, setDetectionResult] = useState<DetectedDimensions | null>(null);
+
+  // Auto-detect on mount if imageUri is provided
+  useEffect(() => {
+    if (visible && imageUri && !detectionResult) {
+      handleAutoDetect();
+    }
+  }, [visible, imageUri]);
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (visible) {
+      setDetectionResult(null);
+    }
+  }, [visible]);
+
+  const handleAutoDetect = async () => {
+    if (!imageUri) return;
+
+    setIsDetecting(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: 'base64',
+      });
+
+      const result = await detectGridDimensions(base64);
+      setDetectionResult(result);
+
+      // Apply detected values
+      if (result.confidence >= 0.5) {
+        setCols(result.cols);
+        setRows(result.rows);
+        setDominoCount(result.dominoCount);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.warn('Auto-detection failed:', error);
+    } finally {
+      setIsDetecting(false);
+    }
+  };
 
   const handleConfirm = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -199,10 +247,90 @@ export function GridSizeHintModal({
                     lineHeight: 20,
                   }}
                 >
-                  Help the AI by entering the puzzle dimensions. Count the columns, rows, and
-                  number of dominoes in the tray.
+                  {imageUri
+                    ? 'Auto-detecting dimensions... You can adjust if needed.'
+                    : 'Help the AI by entering the puzzle dimensions. Count the columns, rows, and number of dominoes in the tray.'}
                 </Text>
               </View>
+
+              {/* Auto-Detection Status */}
+              {imageUri && (
+                <View className="mx-5 mb-4">
+                  <Pressable
+                    onPress={handleAutoDetect}
+                    disabled={isDetecting}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      borderRadius: 12,
+                      backgroundColor: detectionResult
+                        ? detectionResult.confidence >= 0.8
+                          ? '#22C55E20'
+                          : detectionResult.confidence >= 0.5
+                            ? '#F59E0B20'
+                            : '#EF444420'
+                        : isDark
+                          ? '#2a2a2a'
+                          : '#f0f0f0',
+                      borderWidth: 1,
+                      borderColor: detectionResult
+                        ? detectionResult.confidence >= 0.8
+                          ? '#22C55E'
+                          : detectionResult.confidence >= 0.5
+                            ? '#F59E0B'
+                            : '#EF4444'
+                        : isDark
+                          ? '#444'
+                          : '#ddd',
+                      gap: 8,
+                    }}
+                  >
+                    {isDetecting ? (
+                      <>
+                        <ActivityIndicator size="small" color="#3B82F6" />
+                        <Text style={{ color: '#3B82F6', fontWeight: '500' }}>
+                          Detecting dimensions...
+                        </Text>
+                      </>
+                    ) : detectionResult ? (
+                      <>
+                        {detectionResult.confidence >= 0.8 ? (
+                          <Check size={18} color="#22C55E" />
+                        ) : (
+                          <Wand2 size={18} color={detectionResult.confidence >= 0.5 ? '#F59E0B' : '#EF4444'} />
+                        )}
+                        <Text
+                          style={{
+                            color: detectionResult.confidence >= 0.8
+                              ? '#22C55E'
+                              : detectionResult.confidence >= 0.5
+                                ? '#F59E0B'
+                                : '#EF4444',
+                            fontWeight: '500',
+                          }}
+                        >
+                          {detectionResult.confidence >= 0.8
+                            ? 'Auto-detected successfully!'
+                            : detectionResult.confidence >= 0.5
+                              ? 'Detected - please verify'
+                              : 'Low confidence - please check'}
+                          {' '}({Math.round(detectionResult.confidence * 100)}%)
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={18} color={isDark ? '#888' : '#666'} />
+                        <Text style={{ color: isDark ? '#888' : '#666', fontWeight: '500' }}>
+                          Tap to auto-detect
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              )}
 
               {/* Size Controls */}
               <View className="px-5 py-2">
