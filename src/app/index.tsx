@@ -41,7 +41,7 @@ import {
 
 import { useColorScheme } from '@/lib/useColorScheme';
 import { usePuzzleStore, GridEditMode } from '@/lib/state/puzzle-store';
-import { extractPuzzleFromImage, extractPuzzleFromDualImages, createSamplePuzzle, createLShapedPuzzle, GridSizeHint, ExtractionConfidence } from '@/lib/services/gemini';
+import { extractPuzzleFromImage, extractPuzzleFromDualImages, createSamplePuzzle, createLShapedPuzzle, GridSizeHint } from '@/lib/services/gemini';
 import { solvePuzzle, getHintForCell, verifyPartialSolution } from '@/lib/services/solver';
 import { PuzzleGrid } from '@/components/PuzzleGrid';
 import { DominoTray } from '@/components/DominoTray';
@@ -161,7 +161,6 @@ export default function HomeScreen() {
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
   const [showDualCropper, setShowDualCropper] = useState(false);
   const [pendingSizeHint, setPendingSizeHint] = useState<GridSizeHint | null>(null);
-  const [extractionConfidence, setExtractionConfidence] = useState<ExtractionConfidence | null>(null);
 
   // Store state
   const puzzle = usePuzzleStore((s) => s.puzzle);
@@ -248,34 +247,14 @@ export default function HomeScreen() {
     onMutate: () => {
       setLoading(true);
       setError(null);
-      setExtractionConfidence(null);
     },
-    onSuccess: (result) => {
-      setPuzzle(result.puzzleData);
-      setExtractionConfidence(result.confidence);
-
+    onSuccess: (puzzleData) => {
+      setPuzzle(puzzleData);
       // Auto-solve
-      const sol = solvePuzzle(result.puzzleData);
+      const sol = solvePuzzle(puzzleData);
       setSolution(sol);
-
-      // Build error message with confidence warnings
-      let errorMessage = '';
       if (!sol.isValid) {
-        errorMessage = sol.error || 'Could not solve puzzle - try editing the puzzle data';
-      }
-
-      // Add confidence warnings to error/info display
-      if (result.confidence.warnings.length > 0) {
-        const warningText = result.confidence.warnings.slice(0, 3).join('; ');
-        if (errorMessage) {
-          errorMessage += ` | AI warnings: ${warningText}`;
-        } else if (result.confidence.dominoPipsConfidence < 0.8 || result.confidence.gridStructureConfidence < 0.8) {
-          errorMessage = `Low confidence: ${warningText}`;
-        }
-      }
-
-      if (errorMessage) {
-        setError(errorMessage);
+        setError(sol.error || 'Could not solve puzzle - try editing the puzzle data');
       }
       setLoading(false);
     },
@@ -809,54 +788,6 @@ export default function HomeScreen() {
                   </Text>
                 </Pressable>
               )}
-            </Animated.View>
-          )}
-
-          {/* Confidence Indicator */}
-          {extractionConfidence && puzzle && !isLoading && !error && (
-            <Animated.View
-              entering={FadeIn}
-              className="mx-5 mb-4"
-            >
-              <View
-                className="p-3 rounded-xl flex-row items-center justify-between"
-                style={{
-                  backgroundColor: extractionConfidence.dominoPipsConfidence >= 0.9 &&
-                    extractionConfidence.gridStructureConfidence >= 0.9
-                    ? isDark ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.1)'
-                    : isDark ? 'rgba(251, 191, 36, 0.15)' : 'rgba(251, 191, 36, 0.1)',
-                }}
-              >
-                <View className="flex-1">
-                  <Text
-                    className={`text-xs font-medium ${
-                      extractionConfidence.dominoPipsConfidence >= 0.9 &&
-                      extractionConfidence.gridStructureConfidence >= 0.9
-                        ? 'text-green-500'
-                        : 'text-amber-500'
-                    }`}
-                  >
-                    AI Confidence: {Math.round(
-                      (extractionConfidence.dominoPipsConfidence +
-                        extractionConfidence.gridStructureConfidence) / 2 * 100
-                    )}%
-                  </Text>
-                  {extractionConfidence.lowConfidenceAreas.length > 0 && (
-                    <Text className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {extractionConfidence.lowConfidenceAreas.length} items may need review
-                    </Text>
-                  )}
-                </View>
-                {extractionConfidence.lowConfidenceAreas.length > 0 && (
-                  <Pressable
-                    onPress={handleToggleEditMode}
-                    className="px-3 py-1 rounded-lg"
-                    style={{ backgroundColor: isDark ? 'rgba(251, 191, 36, 0.2)' : 'rgba(251, 191, 36, 0.15)' }}
-                  >
-                    <Text className="text-amber-500 text-xs font-medium">Review</Text>
-                  </Pressable>
-                )}
-              </View>
             </Animated.View>
           )}
 

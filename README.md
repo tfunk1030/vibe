@@ -6,7 +6,7 @@ An iOS app that solves NYT Pips domino puzzles from screenshots using AI vision.
 
 - **Camera Capture**: Take a photo of any Pips puzzle directly in the app
 - **Photo Upload**: Import puzzle screenshots from your photo library
-- **AI Extraction**: Uses GPT-5.2 Vision to analyze and extract puzzle data
+- **AI Extraction**: Uses Gemini 2.5 Pro + GPT-4.1 for accurate puzzle extraction
 - **Constraint Solver**: Backtracking algorithm with MRV heuristic to solve puzzles
 - **Full Edit Mode**: Manually correct any AI extraction errors before solving
 - **Save & Load Puzzles**: Save puzzles for later and edit them after saving
@@ -57,18 +57,33 @@ Tap "Re-Solve" when done to find the solution.
 3. **Dual Image Cropping**: Crop two separate regions from your screenshot:
    - **Domino Tray**: Just the dominoes at the bottom
    - **Puzzle Grid**: Just the colored grid with regions
-4. The app uses GPT-5.2 Vision with specialized prompts to extract:
-   - Domino pip values from the domino tray image
-   - Grid shape, regions, and constraints from the grid image
+4. The app uses specialized AI models:
+   - **GPT-5.2**: Counts domino pip values precisely (halved error rates vs GPT-4.1)
+   - **Gemini 3 Pro**: Analyzes grid structure, regions, holes, and constraints (#1 on Vision leaderboard)
 5. If extraction is incorrect, use Edit Mode to fix it
 6. The solver finds valid domino placements satisfying all constraints
 7. View the solution using your preferred solve mode
+
+## Puzzle Constraints (from Real NYT Pips)
+
+The AI recognizes these constraint badge types from real puzzles:
+
+| Badge | Type | Example | Meaning |
+|-------|------|---------|---------|
+| Number (3, 5, 8, 12) | Sum | "8" | Pips in region must sum to 8 |
+| = | Equal | "=" | All pips must be the same value |
+| <N | Less | "<2" | Each pip must be less than 2 (i.e., 0 or 1) |
+| >N | Greater | ">2" | Each pip must be greater than 2 (i.e., 3-6) |
+| No badge | Any | (none) | No constraint on pip values |
+
+Constraint badges appear as small colored diamonds at region edges/corners.
 
 ## Tech Stack
 
 - Expo SDK 53 / React Native
 - TypeScript
-- GPT-5.2 Vision API for image analysis
+- GPT-5.2 + Gemini 3 Pro Vision APIs (via OpenRouter)
+- Qwen3-VL as fallback option
 - React Query for async state
 - Zustand for local state
 - NativeWind/Tailwind for styling
@@ -98,18 +113,11 @@ src/
 └── lib/
     ├── types/puzzle.ts  # Type definitions
     ├── services/
-    │   ├── gemini.ts    # AI extraction (GPT-5.2 dual prompts)
+    │   ├── gemini.ts    # AI extraction (GPT-5.2 + Gemini 3 Pro)
+    │   │               # Also contains createRealPuzzle1Unsolved() and createRealPuzzle2()
+    │   │               # reference puzzles from real NYT Pips screenshots
     │   └── solver.ts    # Constraint solver
     └── state/
         ├── puzzle-store.ts       # Main puzzle state
         └── saved-puzzles-store.ts # Saved puzzles with AsyncStorage
 ```
-
-## Puzzle Constraints Supported
-
-- **Any** (*) - No constraint, any values allowed
-- **Sum** (Σn) - All pips in region sum to n
-- **Equal** (=) - All pips must be the same value
-- **Different** (≠) - All pips must be unique
-- **Greater** (>n) - All pips greater than n
-- **Less** (<n) - All pips less than n

@@ -10,7 +10,8 @@
       "Skill(expo-docs)",
       "Bash(npm run typecheck:*)",
       "Bash(grep:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:docs.expo.dev)"
     ]
   }
 }

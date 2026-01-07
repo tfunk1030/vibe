@@ -14,41 +14,6 @@ import {
 const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY;
 const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
-// Multi-model fallback configuration for resilience
-const DOMINO_MODELS = [
-  'openai/gpt-5.2',           // Primary - best for pip counting
-  'anthropic/claude-sonnet-4', // Fallback 1
-  'google/gemini-2.5-flash',   // Fallback 2
-];
-
-const GRID_MODELS = [
-  'google/gemini-2.5-flash',    // Primary - best for structured grid extraction
-  'openai/gpt-5.2',            // Fallback 1
-  'anthropic/claude-sonnet-4', // Fallback 2
-];
-
-// Delay between retry attempts (exponential backoff)
-const RETRY_DELAYS = [0, 1000, 2000]; // ms
-
-// Confidence scoring types
-export interface ExtractionConfidence {
-  dominoPipsConfidence: number;    // 0-1
-  gridStructureConfidence: number; // 0-1
-  regionBoundaryConfidence: number;// 0-1
-  constraintReadConfidence: number;// 0-1
-
-  lowConfidenceAreas: {
-    type: 'domino' | 'region' | 'constraint';
-    index: number;
-    reason: string;
-  }[];
-
-  warnings: string[];
-}
-
-// Helper to delay execution
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 interface ExtractedCell {
   row: number;
   col: number;
@@ -91,156 +56,6 @@ export interface GridSizeHint {
   dominoCount: number;
 }
 
-// ==========================================
-// VALIDATION HELPERS
-// ==========================================
-
-// Validate and clamp domino pip values to 0-6 range
-function validateDominoPips(dominoes: ExtractedDomino[]): ExtractedDomino[] {
-  return dominoes.map(d => ({
-    pips: [
-      Math.max(0, Math.min(6, Math.round(d.pips[0] ?? 0))),
-      Math.max(0, Math.min(6, Math.round(d.pips[1] ?? 0))),
-    ] as [number, number]
-  }));
-}
-
-// Detect suspicious duplicate dominoes that may indicate misread pips
-function detectSuspiciousDuplicates(dominoes: ExtractedDomino[]): string[] {
-  const seen = new Map<string, number>();
-  const warnings: string[] = [];
-
-  for (const d of dominoes) {
-    const sorted = [...d.pips].sort((a, b) => a - b);
-    const key = `${sorted[0]}-${sorted[1]}`;
-    const count = (seen.get(key) || 0) + 1;
-    seen.set(key, count);
-
-    // Standard domino sets typically have only one of each combination
-    // Having 3+ of the same domino is very suspicious
-    if (count >= 3) {
-      warnings.push(`Suspicious: domino [${d.pips[0]},${d.pips[1]}] appears ${count} times - may be misread`);
-    }
-  }
-
-  return warnings;
-}
-
-// Analyze domino set for common misread patterns
-function analyzeDominoConfidence(dominoes: ExtractedDomino[]): {
-  confidence: number;
-  issues: { index: number; reason: string }[];
-} {
-  const issues: { index: number; reason: string }[] = [];
-  let totalConfidence = 1.0;
-
-  // Check for common misread patterns
-  for (let i = 0; i < dominoes.length; i++) {
-    const d = dominoes[i];
-    const [p1, p2] = d.pips;
-
-    // 5 and 6 are commonly confused (both have many dots)
-    if ((p1 === 5 || p1 === 6) && (p2 === 5 || p2 === 6)) {
-      issues.push({ index: i, reason: '5/6 pips can be confused - verify manually' });
-      totalConfidence -= 0.05;
-    }
-
-    // 0 (blank) sometimes misread as having pips
-    if (p1 === 0 || p2 === 0) {
-      issues.push({ index: i, reason: 'Blank (0) side detected - verify no faint pips' });
-      totalConfidence -= 0.02;
-    }
-  }
-
-  // Check for duplicates
-  const duplicateWarnings = detectSuspiciousDuplicates(dominoes);
-  if (duplicateWarnings.length > 0) {
-    totalConfidence -= duplicateWarnings.length * 0.1;
-  }
-
-  return {
-    confidence: Math.max(0, Math.min(1, totalConfidence)),
-    issues,
-  };
-}
-
-// Verify ASCII grid matches region data
-function verifyAsciiGridConsistency(
-  gridData: GridExtractionResponse
-): { valid: boolean; issues: string[]; confidence: number } {
-  const issues: string[] = [];
-  let confidence = 1.0;
-
-  const ascii = gridData.ascii_grid;
-  if (!ascii || ascii.length === 0) {
-    return { valid: true, issues: ['No ASCII grid provided for verification'], confidence: 0.7 };
-  }
-
-  // Check row count matches height
-  if (ascii.length !== gridData.height) {
-    issues.push(`ASCII grid has ${ascii.length} rows, expected ${gridData.height}`);
-    confidence -= 0.2;
-  }
-
-  // Build grid from regions for comparison
-  const regionGrid: string[][] = Array(gridData.height)
-    .fill(null)
-    .map(() => Array(gridData.width).fill('.'));
-
-  // Mark holes
-  for (const holeCoord of gridData.holes || []) {
-    const cell = parseCoordinate(holeCoord);
-    if (cell && cell.row < gridData.height && cell.col < gridData.width) {
-      regionGrid[cell.row][cell.col] = '#';
-    }
-  }
-
-  // Mark regions
-  for (const region of gridData.regions || []) {
-    for (const coord of region.cells || []) {
-      const cell = parseCoordinate(coord);
-      if (cell && cell.row < gridData.height && cell.col < gridData.width) {
-        regionGrid[cell.row][cell.col] = region.id;
-      }
-    }
-  }
-
-  // Compare with ASCII grid
-  let mismatches = 0;
-  for (let r = 0; r < Math.min(ascii.length, gridData.height); r++) {
-    const asciiRow = ascii[r] || '';
-    for (let c = 0; c < Math.min(asciiRow.length, gridData.width); c++) {
-      const asciiChar = asciiRow[c].toUpperCase();
-      const regionChar = regionGrid[r][c].toUpperCase();
-
-      // Both should agree on holes vs non-holes
-      const asciiIsHole = asciiChar === '#' || asciiChar === '.';
-      const regionIsHole = regionChar === '#' || regionChar === '.';
-
-      if (asciiIsHole !== regionIsHole) {
-        mismatches++;
-        if (mismatches <= 3) {
-          issues.push(`Cell (${r},${c}): ASCII='${asciiChar}' vs regions='${regionChar}'`);
-        }
-      }
-    }
-  }
-
-  if (mismatches > 3) {
-    issues.push(`... and ${mismatches - 3} more mismatches`);
-  }
-
-  if (mismatches > 0) {
-    confidence -= Math.min(0.3, mismatches * 0.05);
-  }
-
-  return {
-    valid: mismatches === 0,
-    issues,
-    confidence: Math.max(0.5, confidence),
-  };
-}
-
 // Check if a set of cells forms a contiguous region (connected by edges)
 function checkRegionContiguity(cells: ExtractedCell[]): boolean {
   if (cells.length <= 1) return true;
@@ -272,41 +87,81 @@ function checkRegionContiguity(cells: ExtractedCell[]): boolean {
 }
 
 // ==========================================
-// NEW: Domino Extraction with GPT-5.2
+// Domino Extraction with GPT-5.2 (best for precise counting - halved error rates)
+// Fallback: Qwen3-VL-235B (open-source, 32-language OCR, rivals GPT-5)
 // ==========================================
-const DOMINO_EXTRACTION_PROMPT = `You are given an image containing multiple domino tiles.
+const DOMINO_EXTRACTION_PROMPT = `You are analyzing domino tiles from a NYT Pips puzzle game screenshot.
 
-Your task is to:
-1. Detect every individual domino tile.
-2. For each tile, count the number of pips on the left half and right half separately.
-3. Output the full set strictly in reading order (left-to-right, top-to-bottom).
-4. Format each domino as (left,right) using integers only.
-5. Do not normalize, rotate, reorder, or infer missing tiles.
-6. If a tile face is blank, output 0 for that side.
-7. Output nothing except the ordered list of (n,n) values.
+## YOUR TASK
+Count the pip dots on each domino tile in the DOMINO TRAY and report the values.
 
-HOW TO COUNT PIPS (dots) ON EACH HALF:
-- 0: blank/empty (no dots at all)
-- 1: one center dot
-- 2: two dots (diagonal)
-- 3: three dots (diagonal line)
-- 4: four dots (corners)
-- 5: five dots (corners + center)
-- 6: six dots (2 columns of 3)
+## DOMINO TRAY LOCATION
+The domino tray is at the BOTTOM of the puzzle screen, below the main grid.
+Dominoes are displayed horizontally in rows (typically 2 rows of 4 dominoes = 8 total).
 
-Output format - JSON array only:
-[(left1,right1), (left2,right2), ...]
+## DOMINO ANATOMY
+Each domino is a rectangular tile with TWO halves separated by a thin line:
+- LEFT half contains 0-6 pips
+- RIGHT half contains 0-6 pips
+The dominoes have a white/cream background with black dots.
 
-Example: [(3,5), (0,0), (2,6), (4,4)]`;
+## PIP COUNTING GUIDE (CRITICAL - study these patterns)
+- **0 pips**: Completely BLANK - no dots at all, just empty white space
+- **1 pip**: Single dot in the CENTER of the half
+- **2 pips**: Two dots positioned DIAGONALLY (opposite corners)
+- **3 pips**: Three dots in a DIAGONAL LINE (corner to corner through center)
+- **4 pips**: Four dots in the FOUR CORNERS (no center dot)
+- **5 pips**: Four corner dots PLUS one CENTER dot (X pattern with center)
+- **6 pips**: Six dots in TWO VERTICAL COLUMNS of three (|||)
 
-async function extractDominoesWithModel(
+## VISUAL EXAMPLES (ASCII representation)
+0: [     ]     1: [  •  ]     2: [ •   ]     3: [ •   ]
+   [     ]        [     ]        [   • ]        [  •  ]
+   [     ]        [     ]        [     ]        [   • ]
+
+4: [ • • ]     5: [ • • ]     6: [ • • ]
+   [     ]        [  •  ]        [ • • ]
+   [ • • ]        [ • • ]        [ • • ]
+
+## READING ORDER
+1. Find the domino tray at the BOTTOM of the image
+2. Read dominoes LEFT to RIGHT in the TOP row first
+3. Then read LEFT to RIGHT in the BOTTOM row
+4. Typical layout: 4 dominoes per row, 2 rows = 8 dominoes total
+
+## OUTPUT FORMAT
+Return ONLY a JSON array of [left_pips, right_pips] pairs:
+[[left1, right1], [left2, right2], ...]
+
+Example for 8 dominoes: [[6, 6], [2, 1], [2, 2], [6, 0], [1, 2], [3, 3], [4, 2], [4, 5]]
+
+## CRITICAL RULES
+- Count EVERY visible domino in the tray, no exceptions
+- Do NOT skip, merge, or assume any dominoes
+- Do NOT normalize or sort - preserve exact left/right order as shown
+- Output values in reading order (top-left to bottom-right)
+- Each half can only be 0, 1, 2, 3, 4, 5, or 6 - never higher
+- Double-check 5 vs 6 pips (5 has center dot + 4 corners, 6 has 2 columns of 3)`;
+
+async function extractDominoesFromImage(
   base64Image: string,
-  model: string,
   expectedCount?: number
 ): Promise<ExtractedDomino[]> {
-  const prompt = expectedCount
-    ? `${DOMINO_EXTRACTION_PROMPT}\n\nThere should be EXACTLY ${expectedCount} dominoes in the image.`
-    : DOMINO_EXTRACTION_PROMPT;
+  console.log('[AI] Extracting dominoes with GPT-5.2...');
+  console.log('[AI] API Key check - present:', !!OPENROUTER_API_KEY, 'length:', OPENROUTER_API_KEY?.length || 0);
+
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
+  }
+
+  let prompt = DOMINO_EXTRACTION_PROMPT;
+  if (expectedCount) {
+    prompt = `${DOMINO_EXTRACTION_PROMPT}
+
+## EXPECTED COUNT
+There should be EXACTLY ${expectedCount} dominoes in the image.
+If you count a different number, re-check carefully before outputting.`;
+  }
 
   const response = await fetch(OPENROUTER_ENDPOINT, {
     method: 'POST',
@@ -317,11 +172,11 @@ async function extractDominoesWithModel(
       'X-Title': 'Pips Solver',
     },
     body: JSON.stringify({
-      model,
+      model: 'openai/gpt-5.2',
       messages: [
         {
           role: 'system',
-          content: 'You are an expert at reading domino pip values. Count dots precisely. Output only the requested format.'
+          content: 'You are an expert at counting dots on domino tiles. Be extremely precise. Count each half of each domino separately. Output only the JSON array requested, nothing else.'
         },
         {
           role: 'user',
@@ -329,7 +184,7 @@ async function extractDominoesWithModel(
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/png;base64,${base64Image}`,
+                url: `data:image/jpeg;base64,${base64Image}`,
               },
             },
             {
@@ -339,22 +194,23 @@ async function extractDominoesWithModel(
           ],
         },
       ],
-      max_tokens: 1000,
+      max_tokens: 1500,
       temperature: 0.1,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`[AI] ${model} API error:`, errorText);
-    throw new Error(`${model} API error: ${response.status}`);
+    console.error('[AI] GPT-5.2 API error:', errorText);
+    throw new Error(`GPT-5.2 API error: ${response.status}`);
   }
 
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content?.trim() || '';
-  console.log(`[AI] ${model} domino response:`, text);
+  console.log('[AI] GPT-5.2 domino response:', text);
 
   // Parse the response - handle various formats
+  // Could be: [(3,5), (0,0)] or [[3,5], [0,0]] or [{"pips": [3,5]}]
   let dominoes: ExtractedDomino[] = [];
 
   // Try parsing as tuple format: [(3,5), (0,0)]
@@ -389,121 +245,199 @@ async function extractDominoesWithModel(
     }
   }
 
-  // Validate pip values
-  dominoes = validateDominoPips(dominoes);
-
+  console.log('[AI] Parsed dominoes:', dominoes.map(d => d.pips));
   return dominoes;
 }
 
-async function extractDominoesFromImage(
-  base64Image: string,
-  expectedCount?: number
-): Promise<{ dominoes: ExtractedDomino[]; confidence: number; warnings: string[] }> {
-  console.log('[AI] Extracting dominoes with multi-model fallback...');
+// ==========================================
+// Grid Extraction with Gemini 3 Pro (#1 on Vision leaderboard - best for spatial reasoning)
+// Fallback: Qwen3-VL-235B (open-source alternative, rivals Gemini 2.5 Pro)
+// ==========================================
+const GRID_EXTRACTION_PROMPT = `You are analyzing a NYT Pips puzzle screenshot. This is a domino placement puzzle with colored regions and constraint badges.
 
-  let lastError: Error | null = null;
+## CRITICAL: UNDERSTANDING THE PUZZLE IMAGE
 
-  // Try each model with retry delays
-  for (let modelIndex = 0; modelIndex < DOMINO_MODELS.length; modelIndex++) {
-    const model = DOMINO_MODELS[modelIndex];
-    console.log(`[AI] Trying domino model: ${model}`);
+The puzzle has TWO distinct parts:
+1. **GRID AREA** (main portion): Contains colored cells with dashed boundaries forming regions
+2. **DOMINO TRAY** (bottom): Shows available dominoes - IGNORE THIS for grid extraction
 
-    // Apply retry delay for subsequent attempts
-    if (modelIndex > 0 && RETRY_DELAYS[modelIndex]) {
-      console.log(`[AI] Waiting ${RETRY_DELAYS[modelIndex]}ms before retry...`);
-      await delay(RETRY_DELAYS[modelIndex]);
+## REAL PIPS PUZZLE CHARACTERISTICS
+
+### GRID SHAPES - INCLUDING DISCONNECTED ISLANDS
+Pips puzzles have IRREGULAR shapes, NOT rectangular grids. Common patterns include:
+- U-shapes (open at top or bottom)
+- L-shapes
+- Staircases
+- Grids with holes in the middle
+- **DISCONNECTED ISLANDS**: Some puzzles have TWO OR MORE separate groups of cells that are NOT connected to each other. These are still valid puzzles! Map BOTH/ALL islands.
+
+### CELL APPEARANCE
+- Colored cells: Have pastel background colors (pink, light blue, mint green, lavender, peach, light yellow, gray)
+- Cells contain either: nothing (empty playable cell) OR domino pips if already placed
+- Holes: Areas with NO cell at all (not colored) - these are gaps in the puzzle shape
+
+### REGION BOUNDARIES
+Regions are bounded by DASHED LINES (not solid lines):
+- Same-colored cells separated by dashed lines = DIFFERENT regions
+- Watch for dashed lines WITHIN a color area to identify separate regions
+
+### CONSTRAINT BADGES (CRITICAL)
+Constraints appear as small COLORED DIAMOND badges positioned at region edges/corners.
+The diamond color often matches or complements the region color.
+
+**Badge Types You Will See:**
+
+1. **NUMBER ONLY** (e.g., "3", "5", "8", "12")
+   - This is a SUM constraint
+   - The total of all pips in that region must equal this number
+   - Example: Badge shows "8" → pips in region must sum to 8
+
+2. **EQUALS SIGN** ("=")
+   - This is an EQUAL constraint
+   - All pip values in the region must be the same
+   - Example: Region with 4 cells showing "=" must have all same pip values
+
+3. **LESS THAN** ("<" followed by number, e.g., "<2", "<4")
+   - This is a LESS constraint
+   - Each pip value in the region must be less than the number
+   - Example: "<4" means all pips must be 0, 1, 2, or 3
+
+4. **GREATER THAN** (">" followed by number, e.g., ">2")
+   - This is a GREATER constraint
+   - Each pip value in the region must be greater than the number
+   - Example: ">2" means all pips must be 3, 4, 5, or 6
+
+5. **NO BADGE** (no diamond visible for a region)
+   - This is an ANY constraint (no restriction on pips)
+
+## STEP-BY-STEP ANALYSIS
+
+### STEP 1: Identify Grid Shape
+- Look at the overall shape of the colored cell area
+- Note where holes/gaps exist (no cells)
+- Count actual COLUMNS and ROWS of the bounding box
+
+### STEP 2: Map Each Position
+Using Row 0 = TOP, Col 0 = LEFT:
+- Colored cell → belongs to a region
+- No cell (gap/hole) → mark as hole
+
+### STEP 3: Identify Regions by DASHED BOUNDARIES
+- Trace the dashed lines to find region boundaries
+- Same color ≠ same region (dashed lines can split colors)
+- Each distinct bounded area is its own region
+
+### STEP 4: Read Constraint Badges
+For each region, find its diamond badge (if any):
+- Note the badge color and position
+- Read the symbol/number inside
+- Map to constraint type (sum/equal/less/greater/any)
+
+## OUTPUT FORMAT
+
+Provide ONLY this JSON (no other text):
+{
+  "width": <number of columns>,
+  "height": <number of rows>,
+  "ascii_grid": ["<row0 with letters for regions, # for holes>", ...],
+  "regions": [
+    {
+      "id": "A",
+      "cells": ["R0,C0", "R0,C1", "R1,C0"],
+      "size": 3,
+      "constraint_type": "sum",
+      "constraint_value": 8
+    },
+    {
+      "id": "B",
+      "cells": ["R0,C2", "R0,C3"],
+      "size": 2,
+      "constraint_type": "equal"
+    },
+    {
+      "id": "C",
+      "cells": ["R1,C2"],
+      "size": 1,
+      "constraint_type": "less",
+      "constraint_value": 4
     }
+  ],
+  "holes": ["R1,C1", "R2,C3"],
+  "unconstrained_regions": ["D", "E"]
+}
 
-    try {
-      const dominoes = await extractDominoesWithModel(base64Image, model, expectedCount);
+## CONSTRAINT TYPE MAPPING
+- Number alone (3, 5, 8, 12) → "sum" with constraint_value = that number
+- "=" symbol → "equal" (no constraint_value needed)
+- "<N" → "less" with constraint_value = N
+- ">N" → "greater" with constraint_value = N
+- No badge → "any" (add region ID to unconstrained_regions)
 
-      // Validate count if expected
-      if (expectedCount && dominoes.length !== expectedCount) {
-        console.warn(`[AI] ${model} returned ${dominoes.length} dominoes, expected ${expectedCount}`);
-        if (modelIndex < DOMINO_MODELS.length - 1) {
-          continue; // Try next model
+## VALIDATION CHECKLIST
+Before outputting, verify:
+□ Every grid position is either in a region OR in holes
+□ Each region's cells are contiguous (connected by edges) - but DIFFERENT regions can be disconnected from each other
+□ The overall grid CAN have disconnected "islands" of cells - this is valid!
+□ Constraint types match the badge symbols exactly
+□ Sum constraints have numeric values matching the badge number
+□ Less/greater constraints have the threshold number as constraint_value
+
+## IMPORTANT: DISCONNECTED GRIDS
+If the puzzle has two or more SEPARATE groups of colored cells with holes/gaps between them, this is called a "disconnected" or "island" grid. This is VALID. Map ALL islands. Do NOT assume all cells must be connected.`;
+
+// Build grid data from ascii_grid when JSON is truncated
+function buildGridFromAscii(width: number, height: number, asciiLines: string[]): GridExtractionResponse {
+  const regions: GridExtractionResponse['regions'] = [];
+  const holes: string[] = [];
+  const regionMap = new Map<string, string[]>(); // letter -> cells
+
+  for (let row = 0; row < asciiLines.length && row < height; row++) {
+    const line = asciiLines[row];
+    for (let col = 0; col < line.length && col < width; col++) {
+      const char = line[col];
+      const coord = `R${row},C${col}`;
+
+      if (char === '#' || char === '.' || char === ' ') {
+        holes.push(coord);
+      } else {
+        // It's a region letter
+        if (!regionMap.has(char)) {
+          regionMap.set(char, []);
         }
+        regionMap.get(char)!.push(coord);
       }
-
-      // Analyze confidence
-      const { confidence, issues } = analyzeDominoConfidence(dominoes);
-      const duplicateWarnings = detectSuspiciousDuplicates(dominoes);
-
-      console.log(`[AI] Domino extraction complete with ${model}:`, {
-        count: dominoes.length,
-        confidence: confidence.toFixed(2),
-        issues: issues.length,
-      });
-
-      return {
-        dominoes,
-        confidence,
-        warnings: [
-          ...issues.map(i => `Domino ${i.index}: ${i.reason}`),
-          ...duplicateWarnings,
-        ],
-      };
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
-      console.warn(`[AI] ${model} failed:`, lastError.message);
     }
   }
 
-  throw lastError || new Error('All domino extraction models failed');
+  // Convert region map to regions array (all as 'any' constraint since we lost that info)
+  for (const [id, cells] of regionMap) {
+    regions.push({
+      id,
+      cells,
+      size: cells.length,
+      constraint_type: 'any', // Default to 'any' since we lost constraint info
+    });
+  }
+
+  console.log('[AI] Built grid from ascii:', { regions: regions.length, holes: holes.length });
+
+  return {
+    width,
+    height,
+    ascii_grid: asciiLines,
+    regions,
+    holes,
+    unconstrained_regions: regions.map(r => r.id),
+  };
 }
 
-// ==========================================
-// NEW: Grid Extraction with GPT-5.2
-// ==========================================
-const GRID_EXTRACTION_PROMPT = `You are given an image of a grid-based logic puzzle with colored dashed regions, holes, and numeric / relational constraint badges.
-
-Your task is to:
-1. Identify the full rectangular grid dimensions.
-2. Mark all hole cells explicitly.
-3. Assign a unique letter ID to every contiguous dashed region.
-4. Output the entire board in ASCII grid form using:
-   - Letters for region IDs
-   - # for holes
-5. List every region with:
-   - Exact cell coordinates (R#,C#) where R=row from top, C=col from left
-   - Region size
-   - Constraint type (=, numeric target, >, <, or none)
-6. List all hole coordinates.
-7. List all unconstrained ("any") regions.
-
-Rules:
-- Do not guess values that are not visible.
-- Do not merge regions by color — only by dashed boundaries.
-- Do not simplify; preserve geometry exactly as shown.
-- Derive the coordinate system from the image itself, not assumptions.
-- Row 0 is the TOP row, Col 0 is the LEFT column.
-
-Constraint badge meanings:
-- "Σ" + number or just a number = sum constraint (type: "sum", value: N)
-- "=" = equal (all same value) (type: "equal")
-- "≠" = different (all unique) (type: "different")
-- ">" + number = greater than (type: "greater", value: N)
-- "<" + number = less than (type: "less", value: N)
-- No badge = any constraint (type: "any")
-
-Output ONLY this JSON format:
-{
-  "width": 4,
-  "height": 5,
-  "ascii_grid": ["AABB", "A#BB", "CCDD", "..."],
-  "regions": [
-    {"id": "A", "cells": ["R0,C0", "R0,C1", "R1,C0"], "size": 3, "constraint_type": "equal"},
-    {"id": "B", "cells": ["R0,C2", "R0,C3", "R1,C2", "R1,C3"], "size": 4, "constraint_type": "sum", "constraint_value": 10}
-  ],
-  "holes": ["R1,C1"],
-  "unconstrained_regions": ["C"]
-}`;
-
-async function extractGridWithModel(
+async function extractGridFromImage(
   base64Image: string,
-  model: string,
-  sizeHint?: GridSizeHint
+  sizeHint?: GridSizeHint,
+  attempt: number = 1
 ): Promise<GridExtractionResponse> {
+  console.log(`[AI] Extracting grid with Gemini 3 Pro Preview (attempt ${attempt})...`);
+
   let prompt = GRID_EXTRACTION_PROMPT;
 
   if (sizeHint) {
@@ -513,14 +447,35 @@ async function extractGridWithModel(
 
     prompt = `${GRID_EXTRACTION_PROMPT}
 
-IMPORTANT SIZE HINTS (from user):
-- Grid dimensions: ${sizeHint.cols} columns × ${sizeHint.rows} rows
-- Expected valid cells: ${expectedCells} (for ${sizeHint.dominoCount} dominoes)
-- Expected holes: ${expectedHoles}
+## KNOWN PUZZLE PARAMETERS (User-provided, MUST match your output):
+- Grid dimensions: EXACTLY ${sizeHint.cols} columns × ${sizeHint.rows} rows
+- Expected colored cells: EXACTLY ${expectedCells} (for ${sizeHint.dominoCount} dominoes × 2 cells each)
+- Expected holes: EXACTLY ${expectedHoles}
 - Total positions: ${totalGridCells}
 
-Every grid position must be either a valid cell (in a region) or a hole.`;
+## IMPORTANT: THIS MAY BE A DISCONNECTED GRID
+If the colored cells form TWO OR MORE separate groups with gaps/holes between them, this is called a "disconnected" or "island" grid. This is VALID and EXPECTED. Map ALL islands carefully.
+
+## GRID COORDINATE REFERENCE
+${Array.from({ length: sizeHint.rows }, (_, r) =>
+  `Row ${r}: ${Array.from({ length: sizeHint.cols }, (_, c) => `(${r},${c})`).join(' ')}`
+).join('\n')}
+
+## FINAL REQUIREMENTS
+Your output MUST have:
+- width: ${sizeHint.cols}
+- height: ${sizeHint.rows}
+- Total region cells: ${expectedCells}
+- Total holes: ${expectedHoles}
+- ascii_grid: ${sizeHint.rows} rows, each with ${sizeHint.cols} characters`;
   }
+
+  // Use different models based on attempt - fallback if first fails
+  // Attempt 1: gemini-3-pro-preview (best quality)
+  // Attempt 2+: gemini-2.5-flash (faster, less reasoning-heavy)
+  const model = attempt === 1 ? 'google/gemini-3-pro-preview' : 'google/gemini-2.5-flash';
+
+  console.log(`[AI] Using model: ${model}`);
 
   const response = await fetch(OPENROUTER_ENDPOINT, {
     method: 'POST',
@@ -535,7 +490,17 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
       messages: [
         {
           role: 'system',
-          content: 'You are an expert at analyzing puzzle grids. Extract structure precisely. Output only factual structure — no solving.'
+          content: `You are a visual puzzle analyst specializing in grid-based logic puzzles. Your task is to precisely extract the structure of a puzzle grid from an image.
+
+CRITICAL RULES:
+1. Be EXTREMELY precise about cell positions - Row 0 is TOP, Col 0 is LEFT
+2. Regions are defined by DASHED BOUNDARIES, not just color similarity
+3. Each region must be CONTIGUOUS (cells connected by edges)
+4. Read constraint badges EXACTLY as shown - don't guess or infer
+5. Every grid position must be classified as either a region cell or a hole
+6. DISCONNECTED GRIDS ARE VALID: If the puzzle has multiple separate "islands" of cells, map ALL of them. Do not assume all cells must form one connected shape.
+7. Output ONLY valid JSON, no explanations or markdown
+8. DO NOT spend tokens explaining your reasoning - just output the JSON directly`
         },
         {
           role: 'user',
@@ -543,7 +508,7 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
             {
               type: 'image_url',
               image_url: {
-                url: `data:image/png;base64,${base64Image}`,
+                url: `data:image/jpeg;base64,${base64Image}`,
               },
             },
             {
@@ -553,7 +518,7 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
           ],
         },
       ],
-      max_tokens: 8000, // Increased for complex grids
+      max_tokens: 32000, // Increased to allow room for both reasoning and output
       temperature: 0.1,
     }),
   });
@@ -561,12 +526,30 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`[AI] ${model} grid API error:`, errorText);
-    throw new Error(`${model} API error: ${response.status}`);
+    throw new Error(`Gemini API error: ${response.status}`);
   }
 
   const data = await response.json();
-  const text = data.choices?.[0]?.message?.content?.trim() || '';
+  let text = data.choices?.[0]?.message?.content?.trim() || '';
   console.log(`[AI] ${model} grid response length:`, text.length);
+  console.log(`[AI] ${model} grid response preview:`, text.slice(0, 500));
+
+  // Check for empty response - common when model uses all tokens on reasoning
+  if (!text || text.length < 10) {
+    // Check if there's reasoning content (model spent all tokens thinking)
+    const reasoning = data.choices?.[0]?.message?.reasoning;
+    const finishReason = data.choices?.[0]?.finish_reason || data.choices?.[0]?.native_finish_reason;
+
+    console.error('[AI] Empty or too short content from Gemini');
+    console.error('[AI] Finish reason:', finishReason);
+    console.error('[AI] Has reasoning:', !!reasoning, reasoning ? `(${reasoning.length} chars)` : '');
+
+    if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
+      throw new Error('Model ran out of tokens (spent on reasoning). Retrying with different approach...');
+    }
+
+    throw new Error('Gemini returned empty response - may be a complex/disconnected grid. Retrying...');
+  }
 
   // Clean and parse JSON
   let cleanedText = text;
@@ -579,81 +562,171 @@ Every grid position must be either a valid cell (in a region) or a hole.`;
     throw new Error('Could not parse grid response');
   }
 
-  const gridData: GridExtractionResponse = JSON.parse(jsonMatch[0]);
-  return gridData;
-}
+  let gridData: GridExtractionResponse;
+  try {
+    gridData = JSON.parse(jsonMatch[0]);
+  } catch (parseError) {
+    // Try to fix truncated JSON by adding missing closing brackets
+    console.warn('[AI] JSON parse failed, attempting to fix truncated response...');
+    let fixedJson = jsonMatch[0];
 
-async function extractGridFromImage(
-  base64Image: string,
-  sizeHint?: GridSizeHint
-): Promise<{ gridData: GridExtractionResponse; confidence: number; warnings: string[] }> {
-  console.log('[AI] Extracting grid with multi-model fallback...');
+    // Count unclosed brackets
+    let openBraces = 0;
+    let openBrackets = 0;
+    for (const char of fixedJson) {
+      if (char === '{') openBraces++;
+      if (char === '}') openBraces--;
+      if (char === '[') openBrackets++;
+      if (char === ']') openBrackets--;
+    }
 
-  let lastError: Error | null = null;
-
-  // Try each model with retry delays
-  for (let modelIndex = 0; modelIndex < GRID_MODELS.length; modelIndex++) {
-    const model = GRID_MODELS[modelIndex];
-    console.log(`[AI] Trying grid model: ${model}`);
-
-    // Apply retry delay for subsequent attempts
-    if (modelIndex > 0 && RETRY_DELAYS[modelIndex]) {
-      console.log(`[AI] Waiting ${RETRY_DELAYS[modelIndex]}ms before retry...`);
-      await delay(RETRY_DELAYS[modelIndex]);
+    // Add missing closing brackets
+    while (openBrackets > 0) {
+      fixedJson += ']';
+      openBrackets--;
+    }
+    while (openBraces > 0) {
+      fixedJson += '}';
+      openBraces--;
     }
 
     try {
-      const gridData = await extractGridWithModel(base64Image, model, sizeHint);
+      gridData = JSON.parse(fixedJson);
+      console.log('[AI] Successfully parsed after fixing truncated JSON');
+    } catch (e2) {
+      // If still failing, try to extract what we can from ascii_grid
+      console.warn('[AI] Still failed after fix, trying to extract from ascii_grid...');
 
-      // Validate dimensions if sizeHint provided
-      if (sizeHint) {
-        if (gridData.width !== sizeHint.cols || gridData.height !== sizeHint.rows) {
-          console.warn(`[AI] ${model} returned wrong dimensions: ${gridData.width}x${gridData.height}, expected ${sizeHint.cols}x${sizeHint.rows}`);
-          // Force correct dimensions
-          gridData.width = sizeHint.cols;
-          gridData.height = sizeHint.rows;
-        }
+      // Try to at least get width/height/ascii_grid from partial response
+      const widthMatch = cleanedText.match(/"width"\s*:\s*(\d+)/);
+      const heightMatch = cleanedText.match(/"height"\s*:\s*(\d+)/);
+      const asciiMatch = cleanedText.match(/"ascii_grid"\s*:\s*\[([\s\S]*?)\]/);
+
+      if (widthMatch && heightMatch && asciiMatch) {
+        const width = parseInt(widthMatch[1]);
+        const height = parseInt(heightMatch[1]);
+        const asciiLines = asciiMatch[1].match(/"([^"]+)"/g)?.map((s: string) => s.replace(/"/g, '')) || [];
+
+        console.log('[AI] Extracted partial data:', { width, height, asciiLines });
+
+        // Build regions from ascii_grid
+        gridData = buildGridFromAscii(width, height, asciiLines);
+      } else {
+        throw new Error(`Could not parse grid response: ${parseError}`);
       }
-
-      // Verify ASCII grid consistency
-      const asciiVerification = verifyAsciiGridConsistency(gridData);
-      const warnings: string[] = [...asciiVerification.issues];
-
-      // Check region contiguity
-      let contiguityConfidence = 1.0;
-      for (const region of gridData.regions || []) {
-        const cells = (region.cells || []).map(c => {
-          const parsed = parseCoordinate(c);
-          return parsed || { row: 0, col: 0 };
-        });
-
-        if (!checkRegionContiguity(cells)) {
-          warnings.push(`Region ${region.id} has non-contiguous cells`);
-          contiguityConfidence -= 0.1;
-        }
-      }
-
-      // Calculate overall confidence
-      const confidence = Math.max(0.3, Math.min(1,
-        (asciiVerification.confidence + contiguityConfidence) / 2
-      ));
-
-      console.log(`[AI] Grid extraction complete with ${model}:`, {
-        width: gridData.width,
-        height: gridData.height,
-        regions: gridData.regions?.length,
-        holes: gridData.holes?.length,
-        confidence: confidence.toFixed(2),
-      });
-
-      return { gridData, confidence, warnings };
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
-      console.warn(`[AI] ${model} failed:`, lastError.message);
     }
   }
 
-  throw lastError || new Error('All grid extraction models failed');
+  console.log('[AI] Parsed grid:', {
+    width: gridData.width,
+    height: gridData.height,
+    regions: gridData.regions?.length,
+    holes: gridData.holes?.length,
+  });
+
+  // Validate and potentially fix the grid data
+  gridData = validateAndFixGridData(gridData, sizeHint);
+
+  return gridData;
+}
+
+// Validate grid data and fix common issues
+function validateAndFixGridData(
+  gridData: GridExtractionResponse,
+  sizeHint?: GridSizeHint
+): GridExtractionResponse {
+  const fixed = { ...gridData };
+
+  // Ensure arrays exist
+  fixed.regions = fixed.regions || [];
+  fixed.holes = fixed.holes || [];
+  fixed.ascii_grid = fixed.ascii_grid || [];
+
+  // Apply size hint if provided
+  if (sizeHint) {
+    fixed.width = sizeHint.cols;
+    fixed.height = sizeHint.rows;
+  }
+
+  // Collect all cells from regions
+  const allRegionCells = new Set<string>();
+  for (const region of fixed.regions) {
+    for (const coord of region.cells || []) {
+      const cell = parseCoordinate(coord);
+      if (cell) {
+        allRegionCells.add(`${cell.row},${cell.col}`);
+      }
+    }
+  }
+
+  // Collect all holes
+  const allHoles = new Set<string>();
+  for (const coord of fixed.holes) {
+    const cell = parseCoordinate(coord);
+    if (cell) {
+      allHoles.add(`${cell.row},${cell.col}`);
+    }
+  }
+
+  // Check for cells that are in both (shouldn't happen)
+  const overlap = [...allRegionCells].filter(c => allHoles.has(c));
+  if (overlap.length > 0) {
+    console.warn(`[AI] Found ${overlap.length} cells in both regions and holes, removing from holes`);
+    // Remove overlapping cells from holes (regions take priority)
+    fixed.holes = fixed.holes.filter(coord => {
+      const cell = parseCoordinate(coord);
+      return cell ? !allRegionCells.has(`${cell.row},${cell.col}`) : true;
+    });
+  }
+
+  // If we have size hints, check if all grid positions are accounted for
+  if (sizeHint) {
+    const expectedTotal = sizeHint.cols * sizeHint.rows;
+    const actualTotal = allRegionCells.size + allHoles.size - overlap.length;
+
+    if (actualTotal !== expectedTotal) {
+      console.warn(`[AI] Grid coverage issue: ${actualTotal} cells accounted for, expected ${expectedTotal}`);
+
+      // Find missing cells
+      const missingCells: string[] = [];
+      for (let r = 0; r < sizeHint.rows; r++) {
+        for (let c = 0; c < sizeHint.cols; c++) {
+          const key = `${r},${c}`;
+          if (!allRegionCells.has(key) && !allHoles.has(key)) {
+            missingCells.push(`R${r},C${c}`);
+          }
+        }
+      }
+
+      if (missingCells.length > 0) {
+        console.warn(`[AI] Missing cells: ${missingCells.join(', ')}`);
+        // Add missing cells as holes (conservative approach)
+        fixed.holes = [...fixed.holes, ...missingCells];
+      }
+    }
+
+    // Validate cell counts
+    const expectedCells = sizeHint.dominoCount * 2;
+    const actualCells = allRegionCells.size;
+    if (actualCells !== expectedCells) {
+      console.warn(`[AI] Cell count mismatch: ${actualCells} region cells, expected ${expectedCells}`);
+    }
+  }
+
+  // Validate each region's contiguity
+  for (const region of fixed.regions) {
+    const cells: ExtractedCell[] = [];
+    for (const coord of region.cells || []) {
+      const cell = parseCoordinate(coord);
+      if (cell) cells.push(cell);
+    }
+
+    if (cells.length > 1 && !checkRegionContiguity(cells)) {
+      console.warn(`[AI] Region ${region.id} is not contiguous!`);
+    }
+  }
+
+  return fixed;
 }
 
 // Parse "R#,C#" format to Cell
@@ -728,32 +801,26 @@ function convertGridResponseToRegions(gridData: GridExtractionResponse): {
 }
 
 // ==========================================
-// NEW: Dual Extraction API with Confidence
+// NEW: Dual Extraction API
 // ==========================================
-
-export interface DualExtractionResult {
-  puzzleData: PuzzleData;
-  confidence: ExtractionConfidence;
-}
-
 export async function extractPuzzleFromDualImages(
   dominoImageUri: string,
   gridImageUri: string,
   sizeHint?: GridSizeHint
-): Promise<DualExtractionResult> {
+): Promise<PuzzleData> {
   if (!OPENROUTER_API_KEY) {
     throw new Error('OpenRouter API key not configured. Please add it in the ENV tab.');
   }
 
-  console.log('[AI] Starting dual image extraction with confidence scoring...');
+  console.log('[AI] Starting dual image extraction...');
 
   // Read both images as base64
   const [dominoBase64, gridBase64] = await Promise.all([
     FileSystem.readAsStringAsync(dominoImageUri, {
-      encoding: 'base64',
+      encoding: FileSystem.EncodingType.Base64,
     }),
     FileSystem.readAsStringAsync(gridImageUri, {
-      encoding: 'base64',
+      encoding: FileSystem.EncodingType.Base64,
     }),
   ]);
 
@@ -764,21 +831,14 @@ export async function extractPuzzleFromDualImages(
     try {
       console.log(`[AI] Dual extraction attempt ${attempt}/${MAX_RETRIES}...`);
 
-      // Apply retry delay for subsequent attempts
-      if (attempt > 1) {
-        const delayMs = RETRY_DELAYS[Math.min(attempt - 1, RETRY_DELAYS.length - 1)];
-        console.log(`[AI] Waiting ${delayMs}ms before retry...`);
-        await delay(delayMs);
-      }
-
       // Extract dominoes and grid in parallel
       const [dominoResult, gridResult] = await Promise.all([
         extractDominoesFromImage(dominoBase64, sizeHint?.dominoCount),
-        extractGridFromImage(gridBase64, sizeHint),
+        extractGridFromImage(gridBase64, sizeHint, attempt),
       ]);
 
       // Convert grid response to our format
-      const { regions, validCells, holes } = convertGridResponseToRegions(gridResult.gridData);
+      const { regions, validCells, holes } = convertGridResponseToRegions(gridResult);
 
       // Validate counts
       if (sizeHint) {
@@ -786,81 +846,34 @@ export async function extractPuzzleFromDualImages(
         if (validCells.length !== expectedCells) {
           throw new Error(`Cell count mismatch: got ${validCells.length}, expected ${expectedCells}`);
         }
-        if (dominoResult.dominoes.length !== sizeHint.dominoCount) {
-          throw new Error(`Domino count mismatch: got ${dominoResult.dominoes.length}, expected ${sizeHint.dominoCount}`);
+        if (dominoResult.length !== sizeHint.dominoCount) {
+          throw new Error(`Domino count mismatch: got ${dominoResult.length}, expected ${sizeHint.dominoCount}`);
         }
       }
 
       // Build puzzle data
       const puzzleData = buildPuzzleData(
-        gridResult.gridData.width || sizeHint?.cols || 5,
-        gridResult.gridData.height || sizeHint?.rows || 5,
+        gridResult.width || sizeHint?.cols || 5,
+        gridResult.height || sizeHint?.rows || 5,
         validCells,
         regions,
-        dominoResult.dominoes
+        dominoResult
       );
-
-      // Build confidence data
-      const lowConfidenceAreas: ExtractionConfidence['lowConfidenceAreas'] = [];
-
-      // Add domino confidence issues
-      for (const warning of dominoResult.warnings) {
-        const match = warning.match(/Domino (\d+):/);
-        if (match) {
-          lowConfidenceAreas.push({
-            type: 'domino',
-            index: parseInt(match[1]),
-            reason: warning,
-          });
-        }
-      }
-
-      // Add grid confidence issues
-      for (const warning of gridResult.warnings) {
-        if (warning.includes('Region')) {
-          const match = warning.match(/Region (\w+)/);
-          lowConfidenceAreas.push({
-            type: 'region',
-            index: match ? puzzleData.regions.findIndex(r => r.id.includes(match[1])) : 0,
-            reason: warning,
-          });
-        }
-      }
-
-      // Analyze constraint confidence (simple heuristic)
-      let constraintConfidence = 1.0;
-      for (const region of puzzleData.regions) {
-        if (region.constraint.type === 'any') {
-          // "any" constraints might be unread badges
-          constraintConfidence -= 0.05;
-        }
-      }
-
-      const confidence: ExtractionConfidence = {
-        dominoPipsConfidence: dominoResult.confidence,
-        gridStructureConfidence: gridResult.confidence,
-        regionBoundaryConfidence: gridResult.confidence * 0.9, // Slightly lower
-        constraintReadConfidence: Math.max(0.5, constraintConfidence),
-        lowConfidenceAreas,
-        warnings: [...dominoResult.warnings, ...gridResult.warnings],
-      };
 
       console.log('[AI] Dual extraction successful!', {
         dominoes: puzzleData.availableDominoes.length,
         cells: puzzleData.validCells.length,
         regions: puzzleData.regions.length,
-        overallConfidence: (
-          (confidence.dominoPipsConfidence +
-            confidence.gridStructureConfidence +
-            confidence.constraintReadConfidence) / 3
-        ).toFixed(2),
-        warnings: confidence.warnings.length,
       });
 
-      return { puzzleData, confidence };
+      return puzzleData;
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
       console.warn(`[AI] Attempt ${attempt} failed: ${lastError.message}`);
+
+      if (attempt < MAX_RETRIES) {
+        console.log('[AI] Retrying...');
+      }
     }
   }
 
@@ -973,15 +986,34 @@ Pips is a domino placement puzzle where:
 - Each domino covers exactly 2 adjacent cells (horizontal or vertical)
 - Colored regions have constraints on pip values
 
+## PUZZLE LAYOUT
+
+The puzzle has TWO parts:
+1. **GRID AREA** (main): Colored cells forming an irregular shape (L, U, staircase, etc.)
+2. **DOMINO TRAY** (bottom): 2 rows of domino tiles to be placed
+
 ## VISUAL IDENTIFICATION
 
-COLORED CELLS (valid/playable):
-- Have a VISIBLE BACKGROUND COLOR (pink, blue, green, yellow, orange, purple, etc.)
+### COLORED CELLS (valid/playable):
+- Have PASTEL background colors (pink, light blue, mint, lavender, peach, yellow, gray)
 - These are where you place dominoes
 
-HOLES (blocked/non-playable):
-- Have NO colored background (dark/black spaces)
-- They are GAPS in the puzzle area
+### HOLES (blocked/non-playable):
+- Areas with NO cell visible (gaps in the puzzle shape)
+- NOT dark cells - just absence of colored cells
+
+### REGIONS:
+- Bounded by DASHED LINES (not solid)
+- Same color with dashed line between = DIFFERENT regions
+
+### CONSTRAINT BADGES (colored diamond shapes):
+Badges appear at region edges/corners. Read the symbol inside:
+
+- **NUMBER (3, 5, 8, 12)** = SUM constraint (pips must total this number)
+- **"=" symbol** = EQUAL constraint (all pips must be same value)
+- **"<N" (like <2, <4)** = LESS constraint (each pip < N)
+- **">N" (like >2)** = GREATER constraint (each pip > N)
+- **No badge** = ANY constraint (no restriction)
 
 ## STEP 1: READ THE DOMINOES CAREFULLY
 
@@ -999,25 +1031,17 @@ HOW TO COUNT PIPS (dots) ON EACH HALF:
 
 Record as [left_pips, right_pips] for each domino.
 
-## STEP 2: IDENTIFY REGIONS BY COLOR
+## STEP 2: IDENTIFY REGIONS BY DASHED BOUNDARIES
 
-Each DISTINCT background color is a SEPARATE region.
-Regions MUST be contiguous (all cells connected by shared edges).
-
-Constraint badges:
-- "Σ" + number = sum constraint
-- "=" = equal (all same value)
-- "≠" = different (all unique)
-- ">" + number = greater than
-- "<" + number = less than
-- No badge = "any" constraint
+Trace the dashed lines to find region boundaries.
+Each distinct bounded area is its own region with its own constraint.
 
 ## STEP 3: MAP THE GRID
 
 Scan the grid systematically:
 - Start at top-left (0,0)
 - Go left to right, then next row
-- Note each cell's color and position
+- Note each cell's region assignment
 
 ## OUTPUT FORMAT (JSON only):
 
@@ -1029,12 +1053,31 @@ Scan the grid systematically:
   "regions": [
     {
       "cells": [{"row": 0, "col": 1}, {"row": 0, "col": 2}],
-      "constraint_type": "equal",
+      "constraint_type": "sum",
+      "constraint_value": 8,
       "color_description": "pink"
+    },
+    {
+      "cells": [{"row": 1, "col": 0}, {"row": 1, "col": 1}],
+      "constraint_type": "equal",
+      "color_description": "blue"
+    },
+    {
+      "cells": [{"row": 2, "col": 0}],
+      "constraint_type": "less",
+      "constraint_value": 4,
+      "color_description": "green"
     }
   ],
   "available_dominoes": [{"pips": [3, 5]}, {"pips": [0, 0]}]
 }
+
+## CONSTRAINT TYPE MAPPING
+- Number badge (3, 5, 8, 12) → "sum" + constraint_value
+- "=" badge → "equal"
+- "<N" badge → "less" + constraint_value = N
+- ">N" badge → "greater" + constraint_value = N
+- No badge → "any"
 
 ## VALIDATION:
 1. Each region's cells must be CONTIGUOUS (connected by edges)
@@ -1061,7 +1104,7 @@ export async function extractPuzzleFromImage(
 
   // Read image as base64
   const base64Image = await FileSystem.readAsStringAsync(imageUri, {
-    encoding: 'base64',
+    encoding: FileSystem.EncodingType.Base64,
   });
 
   const MAX_RETRIES = 3;
@@ -1159,12 +1202,12 @@ FINAL CHECKLIST:
 ${EXTRACTION_PROMPT}`;
   }
 
-  console.log('[AI] Starting grid extraction with Gemini...', sizeHint ? `expecting ${sizeHint.dominoCount * 2} cells` : 'no hints');
+  console.log('[AI] Starting grid extraction with Gemini 3 Flash Preview...', sizeHint ? `expecting ${sizeHint.dominoCount * 2} cells` : 'no hints');
 
   // Increase temperature slightly on retries to get different results
   const temperature = 0.1 + (attempt - 1) * 0.1;
 
-  // Use Gemini for grid/regions
+  // Use Gemini 3 Flash Preview for grid/regions (fast, cost-effective)
   const response = await fetch(OPENROUTER_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -1174,7 +1217,7 @@ ${EXTRACTION_PROMPT}`;
       'X-Title': 'Pips Solver',
     },
     body: JSON.stringify({
-      model: 'google/gemini-3-flash-preview-20251217',
+      model: 'google/gemini-3-flash-preview',
       messages: [
         {
           role: 'system',
@@ -1300,15 +1343,12 @@ ${EXTRACTION_PROMPT}`;
   const dominoCount = sizeHint?.dominoCount ?? extractedResponse.available_dominoes?.length ?? 0;
   if (dominoCount > 0) {
     try {
-      const dominoResult = await extractDominoesFromImage(base64Image, dominoCount);
-      if (dominoResult.dominoes.length === dominoCount) {
+      const gptDominoes = await extractDominoesFromImage(base64Image, dominoCount);
+      if (gptDominoes.length === dominoCount) {
         console.log('[AI] Replacing Gemini dominoes with GPT-5.2 dominoes');
-        extractedResponse.available_dominoes = dominoResult.dominoes;
-        if (dominoResult.warnings.length > 0) {
-          console.warn('[AI] Domino extraction warnings:', dominoResult.warnings);
-        }
+        extractedResponse.available_dominoes = gptDominoes;
       } else {
-        console.warn(`[AI] GPT-5.2 returned ${dominoResult.dominoes.length} dominoes, expected ${dominoCount}. Keeping Gemini values.`);
+        console.warn(`[AI] GPT-5.2 returned ${gptDominoes.length} dominoes, expected ${dominoCount}. Keeping Gemini values.`);
       }
     } catch (gptError) {
       console.warn('[AI] GPT-5.2 domino extraction failed, keeping Gemini values:', gptError);
@@ -1818,6 +1858,181 @@ export function createLShapedPuzzle(): PuzzleData {
   return {
     width: 4,
     height: 8,
+    validCells,
+    regions,
+    availableDominoes,
+    blockedCells: [],
+  };
+}
+
+// ==========================================
+// REAL PUZZLE EXAMPLES (from user screenshots)
+// These serve as reference for AI extraction accuracy
+// ==========================================
+
+// Real Puzzle 1: U-shaped puzzle with solved state visible (image-1767591837)
+// Grid: 7 columns x 4 rows, U-shape (open at top center)
+// This is the UNSOLVED version with dominoes in tray
+export function createRealPuzzle1Unsolved(): PuzzleData {
+  // U-shape: cols 0-1 filled, cols 2-4 only row 3, cols 5-6 filled
+  const validCells: Cell[] = [
+    // Left arm (cols 0-1)
+    { row: 0, col: 0 }, { row: 0, col: 1 },
+    { row: 1, col: 0 }, { row: 1, col: 1 },
+    { row: 2, col: 0 }, { row: 2, col: 1 },
+    { row: 3, col: 0 }, { row: 3, col: 1 },
+    // Bottom bar (row 3, cols 2-4)
+    { row: 3, col: 2 }, { row: 3, col: 3 }, { row: 3, col: 4 },
+    // Right arm (cols 5-6)
+    { row: 0, col: 5 }, { row: 0, col: 6 },
+    { row: 1, col: 5 }, { row: 1, col: 6 },
+    { row: 2, col: 5 }, { row: 2, col: 6 },
+    { row: 3, col: 5 }, { row: 3, col: 6 },
+  ];
+
+  // Regions from the puzzle (based on colors and constraint badges)
+  const regions: Region[] = [
+    {
+      id: 'region-purple',
+      cells: [{ row: 0, col: 0 }, { row: 0, col: 1 }],
+      color: '#E8D4F0', // Lavender
+      constraint: { type: 'sum', value: 3 },
+    },
+    {
+      id: 'region-pink-right',
+      cells: [{ row: 0, col: 5 }, { row: 1, col: 5 }],
+      color: '#FFD5D5', // Pink
+      constraint: { type: 'sum', value: 2 },
+    },
+    {
+      id: 'region-teal',
+      cells: [{ row: 1, col: 0 }, { row: 1, col: 1 }, { row: 2, col: 0 }, { row: 2, col: 1 }],
+      color: '#B8E0E0', // Teal/mint
+      constraint: { type: 'sum', value: 8 },
+    },
+    {
+      id: 'region-white-left',
+      cells: [{ row: 3, col: 0 }, { row: 3, col: 1 }],
+      color: '#FFFFFF', // White
+      constraint: { type: 'any' },
+    },
+    {
+      id: 'region-beige',
+      cells: [{ row: 3, col: 2 }, { row: 3, col: 3 }],
+      color: '#F5E6C8', // Beige/cream
+      constraint: { type: 'any' },
+    },
+    {
+      id: 'region-light-blue',
+      cells: [{ row: 3, col: 4 }, { row: 3, col: 5 }],
+      color: '#D5E5F0', // Light blue
+      constraint: { type: 'sum', value: 12 },
+    },
+    {
+      id: 'region-white-right',
+      cells: [{ row: 0, col: 6 }, { row: 1, col: 6 }, { row: 2, col: 5 }, { row: 2, col: 6 }],
+      color: '#FFFFFF', // White
+      constraint: { type: 'any' },
+    },
+    {
+      id: 'region-gray',
+      cells: [{ row: 3, col: 6 }],
+      color: '#D0D0D0', // Gray
+      constraint: { type: 'sum', value: 8 },
+    },
+  ];
+
+  // Dominoes from tray (reading order: top row L-R, then bottom row L-R)
+  // Based on image-1767591846 (unsolved puzzle with tray visible)
+  const availableDominoes: Domino[] = [
+    { id: 'd0', pips: [6, 6] },
+    { id: 'd1', pips: [2, 1] },
+    { id: 'd2', pips: [2, 2] },
+    { id: 'd3', pips: [6, 0] },
+    { id: 'd4', pips: [1, 2] },
+    { id: 'd5', pips: [3, 3] },
+    { id: 'd6', pips: [4, 2] },
+    { id: 'd7', pips: [4, 5] },
+  ];
+
+  return {
+    width: 7,
+    height: 4,
+    validCells,
+    regions,
+    availableDominoes,
+    blockedCells: [],
+  };
+}
+
+// Real Puzzle 2: Irregular shape puzzle (image-1767591846)
+// This puzzle has: 3 sum, =, <2, <4, 5, >2 constraints
+export function createRealPuzzle2(): PuzzleData {
+  // Grid is approximately 4x4 with a hole in the middle
+  const validCells: Cell[] = [
+    // Row 0
+    { row: 0, col: 0 }, { row: 0, col: 1 }, { row: 0, col: 2 }, { row: 0, col: 3 },
+    // Row 1
+    { row: 1, col: 0 }, { row: 1, col: 1 }, { row: 1, col: 2 }, { row: 1, col: 3 },
+    // Row 2 (hole at col 1)
+    { row: 2, col: 0 }, { row: 2, col: 2 }, { row: 2, col: 3 },
+    // Row 3
+    { row: 3, col: 0 }, { row: 3, col: 1 }, { row: 3, col: 2 }, { row: 3, col: 3 },
+  ];
+
+  const regions: Region[] = [
+    {
+      id: 'region-purple',
+      cells: [{ row: 0, col: 0 }, { row: 1, col: 0 }, { row: 2, col: 0 }, { row: 3, col: 0 }],
+      color: '#E8D4F0',
+      constraint: { type: 'sum', value: 3 },
+    },
+    {
+      id: 'region-pink-top',
+      cells: [{ row: 0, col: 1 }, { row: 0, col: 2 }, { row: 0, col: 3 }],
+      color: '#FFD5D5',
+      constraint: { type: 'equal' },
+    },
+    {
+      id: 'region-beige',
+      cells: [{ row: 1, col: 1 }, { row: 1, col: 2 }],
+      color: '#F5E6C8',
+      constraint: { type: 'less', value: 2 },
+    },
+    {
+      id: 'region-gray',
+      cells: [{ row: 1, col: 3 }, { row: 2, col: 3 }],
+      color: '#D0D0D0',
+      constraint: { type: 'less', value: 4 },
+    },
+    {
+      id: 'region-pink-bottom',
+      cells: [{ row: 2, col: 2 }, { row: 3, col: 2 }],
+      color: '#FFD5D5',
+      constraint: { type: 'sum', value: 5 },
+    },
+    {
+      id: 'region-light-blue',
+      cells: [{ row: 3, col: 1 }, { row: 3, col: 3 }],
+      color: '#D5E5F0',
+      constraint: { type: 'equal' },
+    },
+  ];
+
+  const availableDominoes: Domino[] = [
+    { id: 'd0', pips: [6, 6] },
+    { id: 'd1', pips: [2, 1] },
+    { id: 'd2', pips: [2, 2] },
+    { id: 'd3', pips: [6, 0] },
+    { id: 'd4', pips: [1, 2] },
+    { id: 'd5', pips: [3, 3] },
+    { id: 'd6', pips: [4, 2] },
+    { id: 'd7', pips: [4, 5] },
+  ];
+
+  return {
+    width: 4,
+    height: 4,
     validCells,
     regions,
     availableDominoes,

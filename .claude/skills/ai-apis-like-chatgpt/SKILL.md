@@ -1,5 +1,5 @@
 ---
-name: ai-apis-like-chatgpt
+name: ai-apis
 description: How to use AI APIs like OpenAI, ChatGPT, Elevenlabs, etc. When a user asks you to make an app that requires an AI API, use this skill to understand how to use the API or how to respond to the user.
 ---
 

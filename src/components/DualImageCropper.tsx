@@ -9,9 +9,9 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
-import * as FileSystem from 'expo-file-system';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -286,7 +286,7 @@ export function DualImageCropper({
   }, [visible, sourceImageUri]);
 
   const cropImage = useCallback(
-    async (region: CropRegion, type: 'domino' | 'grid'): Promise<string> => {
+    async (region: CropRegion): Promise<string> => {
       if (!imageDimensions) throw new Error('Image dimensions not loaded');
 
       // Convert display coordinates to actual image coordinates
@@ -300,43 +300,13 @@ export function DualImageCropper({
         height: Math.round(region.height * scaleY),
       };
 
-      // Step 1: Crop the image
-      const cropped = await ImageManipulator.manipulateAsync(
+      const result = await ImageManipulator.manipulateAsync(
         sourceImageUri,
         [{ crop: cropData }],
-        { compress: 1.0, format: ImageManipulator.SaveFormat.PNG } // Lossless for AI
+        { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
       );
 
-      // Step 2: Apply preprocessing for better AI accuracy
-      // - Slight resize up then down for anti-aliasing/sharpening effect
-      // - Different strategies for domino vs grid
-      const preprocessActions: ImageManipulator.Action[] = [];
-
-      if (type === 'domino') {
-        // For dominoes, we want crisp pip edges
-        // Upscale slightly to help with small pip detection
-        const targetWidth = Math.max(cropData.width, 800);
-        if (cropData.width < targetWidth) {
-          preprocessActions.push({ resize: { width: targetWidth } });
-        }
-      } else {
-        // For grid, normalize to consistent size for region detection
-        const targetWidth = Math.max(cropData.width, 1000);
-        if (cropData.width < targetWidth) {
-          preprocessActions.push({ resize: { width: targetWidth } });
-        }
-      }
-
-      if (preprocessActions.length > 0) {
-        const processed = await ImageManipulator.manipulateAsync(
-          cropped.uri,
-          preprocessActions,
-          { compress: 1.0, format: ImageManipulator.SaveFormat.PNG }
-        );
-        return processed.uri;
-      }
-
-      return cropped.uri;
+      return result.uri;
     },
     [sourceImageUri, imageDimensions]
   );
@@ -346,7 +316,7 @@ export function DualImageCropper({
       setIsProcessing(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      const croppedUri = await cropImage(dominoCropRegion, 'domino');
+      const croppedUri = await cropImage(dominoCropRegion);
       setDominoImageUri(croppedUri);
       setStep('grid');
     } catch (error) {
@@ -361,7 +331,7 @@ export function DualImageCropper({
       setIsProcessing(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      const croppedUri = await cropImage(gridCropRegion, 'grid');
+      const croppedUri = await cropImage(gridCropRegion);
       setGridImageUri(croppedUri);
       setStep('preview');
     } catch (error) {

@@ -115,9 +115,7 @@ export default function CameraScreen() {
     if (!cameraRef.current || isPending) return;
 
     const photo = await cameraRef.current.takePictureAsync({
-      quality: 1.0,           // Max quality for better AI accuracy
-      skipProcessing: false,  // Let camera do auto-adjust (exposure, focus)
-      exif: true,             // Preserve orientation metadata
+      quality: 0.8,
     });
 
     if (photo?.uri) {
@@ -226,11 +224,6 @@ export default function CameraScreen() {
             <Text style={styles.guideText}>
               Position the puzzle within the frame
             </Text>
-            <View style={styles.tipsContainer}>
-              <Text style={styles.tipText}>• Hold steady for sharp image</Text>
-              <Text style={styles.tipText}>• Include both grid AND domino tray</Text>
-              <Text style={styles.tipText}>• Good lighting helps accuracy</Text>
-            </View>
           </View>
 
           {/* Bottom Bar */}
@@ -345,18 +338,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 20,
     textAlign: 'center',
-  },
-  tipsContainer: {
-    marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 12,
-  },
-  tipText: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 12,
-    marginVertical: 2,
   },
   bottomBar: {
     flexDirection: 'row',
