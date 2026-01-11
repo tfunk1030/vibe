@@ -1,23 +1,30 @@
+/**
+ * PuzzleGrid - Obsidian Arcade
+ *
+ * Premium puzzle grid with glassmorphism cells and glow effects.
+ */
+
 import React, { useMemo } from 'react';
-import { View, Text, Pressable, Dimensions } from 'react-native';
+import { View, Text, Pressable, Dimensions, StyleSheet } from 'react-native';
 import Animated, {
   FadeIn,
   useAnimatedStyle,
   withSpring,
   useSharedValue,
+  withSequence,
+  withTiming,
 } from 'react-native-reanimated';
 import { Plus, AlertTriangle } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import {
   PuzzleData,
   PlacedDomino,
   Cell,
   cellKey,
   constraintLabel,
-  ExtractionConfidence,
-  IslandMetadata,
 } from '@/lib/types/puzzle';
 import { GridEditMode } from '@/lib/state/puzzle-store';
+import { obsidianDark, radius, springs } from '@/lib/theme';
+import { hapticPatterns } from '@/lib/haptics';
 
 interface PuzzleGridProps {
   puzzle: PuzzleData;
@@ -75,11 +82,9 @@ const PIP_POSITIONS: Record<number, { x: number; y: number }[]> = {
 function PipDots({
   count,
   size,
-  color,
 }: {
   count: number;
   size: number;
-  color: string;
 }) {
   const positions = PIP_POSITIONS[count] || [];
   const dotSize = size * 0.18;
@@ -96,7 +101,11 @@ function PipDots({
             width: dotSize,
             height: dotSize,
             borderRadius: dotSize / 2,
-            backgroundColor: color,
+            backgroundColor: obsidianDark.text.primary,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.3,
+            shadowRadius: 2,
           }}
         />
       ))}
@@ -136,34 +145,73 @@ function GridCell({
   isUncertainRegion?: boolean;
 }) {
   const scale = useSharedValue(1);
+  const glow = useSharedValue(0);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
+  const glowStyle = useAnimatedStyle(() => {
+    if (!isSelected) return {};
+    return {
+      shadowColor: obsidianDark.accent.primary,
+      shadowOpacity: 0.6 + glow.value * 0.4,
+      shadowRadius: 8 + glow.value * 4,
+      shadowOffset: { width: 0, height: 0 },
+    };
+  });
+
   const handlePressIn = () => {
-    scale.value = withSpring(0.95);
+    scale.value = withSpring(0.92, springs.snappy);
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1);
+    scale.value = withSpring(1, springs.smooth);
   };
 
   const handlePress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticPatterns.lightTap();
     onPress();
   };
 
   const handleLongPress = () => {
     if (isEditMode && onRegionPress) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      hapticPatterns.longPress();
       onRegionPress();
     }
   };
 
+  // Determine border styling
+  const getBorderStyle = () => {
+    if (isSelected) {
+      return {
+        borderWidth: 3,
+        borderColor: obsidianDark.accent.primary,
+      };
+    }
+    if (isUncertain || isUncertainRegion) {
+      return {
+        borderWidth: 2,
+        borderColor: obsidianDark.accent.warning,
+      };
+    }
+    if (isEditMode) {
+      return {
+        borderWidth: 2,
+        borderColor: obsidianDark.accent.cyan,
+      };
+    }
+    return {
+      borderWidth: 1,
+      borderColor: obsidianDark.border.default,
+    };
+  };
+
+  const borderStyle = getBorderStyle();
+
   return (
     <Animated.View
-      entering={FadeIn.delay(cell.row * 30 + cell.col * 20)}
+      entering={FadeIn.delay(cell.row * 30 + cell.col * 20).springify()}
       style={[
         {
           position: 'absolute',
@@ -174,6 +222,7 @@ function GridCell({
           padding: 2,
         },
         animatedStyle,
+        isSelected && glowStyle,
       ]}
     >
       <Pressable
@@ -181,91 +230,46 @@ function GridCell({
         onLongPress={handleLongPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        style={{
-          flex: 1,
-          backgroundColor: regionColor + (isDark ? 'CC' : '99'),
-          borderRadius: 6,
-          borderWidth: isSelected ? 3 : (isUncertain || isUncertainRegion) ? 2 : isEditMode ? 2 : 1,
-          borderColor: isSelected
-            ? isDark
-              ? '#fff'
-              : '#000'
-            : (isUncertain || isUncertainRegion)
-              ? '#F59E0B' // Amber warning color
-              : isEditMode
-                ? '#3B82F6'
-                : isDark
-                  ? 'rgba(255,255,255,0.3)'
-                  : 'rgba(0,0,0,0.2)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          overflow: 'hidden',
-        }}
+        style={[
+          styles.cell,
+          {
+            backgroundColor: regionColor + 'B3', // 70% opacity
+            ...borderStyle,
+          },
+        ]}
       >
+        {/* Glass overlay for depth */}
+        <View style={styles.cellGlassOverlay} />
+
         {placedPip !== null ? (
-          <Animated.View entering={FadeIn.duration(200)}>
-            <PipDots
-              count={placedPip}
-              size={cellSize * 0.7}
-              color={isDark ? '#fff' : '#1a1a1a'}
-            />
+          <Animated.View entering={FadeIn.duration(200).springify()}>
+            <PipDots count={placedPip} size={cellSize * 0.7} />
           </Animated.View>
         ) : (
-          /* Show constraint text on every cell without a placed pip */
           constraintText && (
-            <View
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-            >
+            <View style={styles.constraintContainer}>
               <Text
-                style={{
-                  fontSize: cellSize * 0.35,
-                  fontWeight: '800',
-                  color: isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)',
-                  textShadowColor: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)',
-                  textShadowOffset: { width: 0, height: 1 },
-                  textShadowRadius: 2,
-                }}
+                style={[
+                  styles.constraintText,
+                  { fontSize: cellSize * 0.35 },
+                ]}
               >
                 {constraintText}
               </Text>
             </View>
           )
         )}
+
         {/* Warning indicator for uncertain cells/regions */}
         {(isUncertain || isUncertainRegion) && (
-          <View
-            style={{
-              position: 'absolute',
-              top: 2,
-              right: 2,
-              backgroundColor: '#F59E0B',
-              borderRadius: 3,
-              padding: 1,
-            }}
-          >
+          <View style={styles.warningBadge}>
             <AlertTriangle size={cellSize * 0.18} color="#fff" />
           </View>
         )}
+
+        {/* Edit mode selection indicator */}
         {isEditMode && isSelectedRegion && (
-          <View
-            style={{
-              position: 'absolute',
-              bottom: 2,
-              right: 2,
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: '#3B82F6',
-            }}
-          />
+          <View style={styles.editIndicator} />
         )}
       </Pressable>
     </Animated.View>
@@ -292,7 +296,7 @@ function EmptyGridCell({
   }));
 
   const handlePress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    hapticPatterns.lightTap();
     onPress();
   };
 
@@ -315,31 +319,27 @@ function EmptyGridCell({
       <Pressable
         onPress={handlePress}
         onPressIn={() => {
-          scale.value = withSpring(0.95);
+          scale.value = withSpring(0.95, springs.snappy);
         }}
         onPressOut={() => {
-          scale.value = withSpring(1);
+          scale.value = withSpring(1, springs.smooth);
         }}
-        style={{
-          flex: 1,
-          backgroundColor: isHighlighted
-            ? highlightColor + '40'
-            : isDark
-              ? 'rgba(255,255,255,0.05)'
-              : 'rgba(0,0,0,0.03)',
-          borderRadius: 6,
-          borderWidth: 2,
-          borderStyle: 'dashed',
-          borderColor: isHighlighted
-            ? highlightColor
-            : isDark
-              ? 'rgba(255,255,255,0.1)'
-              : 'rgba(0,0,0,0.1)',
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
+        style={[
+          styles.emptyCell,
+          {
+            backgroundColor: isHighlighted
+              ? highlightColor + '26' // 15% opacity
+              : obsidianDark.bg.slate,
+            borderColor: isHighlighted
+              ? highlightColor
+              : obsidianDark.border.subtle,
+          },
+        ]}
       >
-        <Plus size={cellSize * 0.3} color={isHighlighted ? highlightColor : isDark ? '#444' : '#ccc'} />
+        <Plus
+          size={cellSize * 0.3}
+          color={isHighlighted ? highlightColor : obsidianDark.text.subtle}
+        />
       </Pressable>
     </Animated.View>
   );
@@ -359,11 +359,9 @@ export function PuzzleGrid({
   showIslandSeparators = true,
 }: PuzzleGridProps) {
   // Calculate cell size based on grid dimensions
-  // For larger grids (7x9+), we need smaller cells to fit
   const cellSize = useMemo(() => {
     const availableWidth = SCREEN_WIDTH - GRID_PADDING * 2;
     const maxCellWidth = availableWidth / puzzle.width;
-    // Scale max cell size based on grid size - smaller grids get larger cells
     const maxCellSize = puzzle.width <= 5 ? 70 : puzzle.width <= 7 ? 55 : 45;
     return Math.min(maxCellWidth, maxCellSize);
   }, [puzzle.width]);
@@ -436,13 +434,7 @@ export function PuzzleGrid({
   const gridHeight = puzzle.height * cellSize;
 
   return (
-    <View
-      style={{
-        width: gridWidth,
-        height: gridHeight,
-        position: 'relative',
-      }}
-    >
+    <View style={[styles.gridContainer, { width: gridWidth, height: gridHeight }]}>
       {/* Empty cells (edit mode only) */}
       {isEditMode &&
         emptyCells.map((cell) => {
@@ -491,29 +483,91 @@ export function PuzzleGrid({
         );
       })}
 
-      {/* Island separators - render vertical lines between islands */}
+      {/* Island separators */}
       {showIslandSeparators && puzzle.islands && puzzle.islands.length > 1 && puzzle.islands.map((island, index) => {
-        // Skip the first island (no separator before it)
         if (index === 0) return null;
-
-        // Position separator at the start of this island (which is right after previous island + gap)
         const separatorX = island.startCol * cellSize - cellSize / 2;
 
         return (
           <View
             key={`island-separator-${index}`}
-            style={{
-              position: 'absolute',
-              left: separatorX,
-              top: 0,
-              width: 2,
-              height: gridHeight,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
-              borderRadius: 1,
-            }}
+            style={[
+              styles.islandSeparator,
+              {
+                left: separatorX,
+                height: gridHeight,
+              },
+            ]}
           />
         );
       })}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  gridContainer: {
+    position: 'relative',
+  },
+  cell: {
+    flex: 1,
+    borderRadius: radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  cellGlassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  constraintContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  constraintText: {
+    fontWeight: '800',
+    color: obsidianDark.text.primary,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  warningBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: obsidianDark.accent.warning,
+    borderRadius: 3,
+    padding: 1,
+  },
+  editIndicator: {
+    position: 'absolute',
+    bottom: 3,
+    right: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: obsidianDark.accent.cyan,
+  },
+  emptyCell: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  islandSeparator: {
+    position: 'absolute',
+    top: 0,
+    width: 2,
+    backgroundColor: obsidianDark.border.strong,
+    borderRadius: 1,
+  },
+});

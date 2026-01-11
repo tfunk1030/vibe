@@ -1,5 +1,11 @@
+/**
+ * DominoTray - Obsidian Arcade
+ *
+ * Premium domino tray with brass border and 3D-styled tiles.
+ */
+
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -7,9 +13,11 @@ import Animated, {
   withSpring,
   useSharedValue,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Plus } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import { Domino, PlacedDomino, dominoId } from '@/lib/types/puzzle';
+import { obsidianDark, radius, springs, gradients } from '@/lib/theme';
+import { hapticPatterns } from '@/lib/haptics';
 
 // Pip positions for domino display
 const PIP_POSITIONS: Record<number, { x: number; y: number }[]> = {
@@ -50,11 +58,11 @@ const PIP_POSITIONS: Record<number, { x: number; y: number }[]> = {
 function PipDots({
   count,
   size,
-  color,
+  isUsed,
 }: {
   count: number;
   size: number;
-  color: string;
+  isUsed: boolean;
 }) {
   const positions = PIP_POSITIONS[count] || [];
   const dotSize = size * 0.2;
@@ -71,7 +79,11 @@ function PipDots({
             width: dotSize,
             height: dotSize,
             borderRadius: dotSize / 2,
-            backgroundColor: color,
+            backgroundColor: isUsed ? obsidianDark.text.muted : obsidianDark.text.primary,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: isUsed ? 0 : 0.3,
+            shadowRadius: 1,
           }}
         />
       ))}
@@ -97,56 +109,58 @@ function DominoTile({
   size = 36,
 }: DominoTileProps) {
   const scale = useSharedValue(1);
-  const bgColor = isDark ? '#2a2a2a' : '#f5f5f5';
-  const borderColor = isDark ? '#444' : '#ddd';
-  const pipColor = isDark ? '#fff' : '#1a1a1a';
+  const translateY = useSharedValue(0);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [
+      { scale: scale.value },
+      { translateY: translateY.value },
+    ],
   }));
 
   const handlePressIn = () => {
-    if (isEditMode) {
-      scale.value = withSpring(0.95);
+    if (!isUsed) {
+      scale.value = withSpring(0.95, springs.snappy);
+      translateY.value = withSpring(-2, springs.snappy);
     }
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1);
+    scale.value = withSpring(1, springs.smooth);
+    translateY.value = withSpring(0, springs.smooth);
   };
 
   const handlePress = () => {
     if (isEditMode && onPress) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      hapticPatterns.selectionTap();
       onPress();
     }
   };
 
   const content = (
-    <View
-      style={{
-        flexDirection: 'row',
-        backgroundColor: isUsed ? (isDark ? '#1a1a1a' : '#e0e0e0') : bgColor,
-        borderRadius: 8,
-        borderWidth: isEditMode ? 2 : 1,
-        borderColor: isEditMode ? '#3B82F6' : isUsed ? 'transparent' : borderColor,
-        marginHorizontal: 4,
-        opacity: isUsed ? 0.3 : 1,
-        overflow: 'hidden',
-      }}
-    >
-      <View
-        style={{
-          padding: 4,
-          borderRightWidth: 1,
-          borderRightColor: isDark ? '#444' : '#ccc',
-        }}
-      >
-        <PipDots count={domino.pips[0]} size={size} color={isUsed ? '#888' : pipColor} />
+    <View style={[styles.dominoTile, isUsed && styles.dominoUsed]}>
+      {/* 3D effect - top highlight */}
+      <View style={styles.domino3DTop} />
+
+      {/* Left pip section */}
+      <View style={styles.dominoHalf}>
+        <PipDots count={domino.pips[0]} size={size} isUsed={isUsed} />
       </View>
-      <View style={{ padding: 4 }}>
-        <PipDots count={domino.pips[1]} size={size} color={isUsed ? '#888' : pipColor} />
+
+      {/* Divider */}
+      <View style={styles.dominoDivider} />
+
+      {/* Right pip section */}
+      <View style={styles.dominoHalf}>
+        <PipDots count={domino.pips[1]} size={size} isUsed={isUsed} />
       </View>
+
+      {/* Used overlay with strikethrough */}
+      {isUsed && (
+        <View style={styles.usedOverlay}>
+          <View style={styles.strikethrough} />
+        </View>
+      )}
     </View>
   );
 
@@ -157,6 +171,10 @@ function DominoTile({
           onPress={handlePress}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          style={[
+            styles.dominoWrapper,
+            isEditMode && !isUsed && styles.dominoEditMode,
+          ]}
         >
           {content}
         </Pressable>
@@ -165,18 +183,26 @@ function DominoTile({
   }
 
   return (
-    <Animated.View entering={FadeIn} exiting={FadeOut}>
-      {content}
+    <Animated.View
+      entering={FadeIn}
+      exiting={FadeOut}
+      style={[animatedStyle, styles.dominoWrapper]}
+    >
+      <Pressable
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={isUsed}
+      >
+        {content}
+      </Pressable>
     </Animated.View>
   );
 }
 
 function AddDominoButton({
-  isDark,
   onPress,
   size = 36,
 }: {
-  isDark: boolean;
   onPress: () => void;
   size?: number;
 }) {
@@ -187,38 +213,28 @@ function AddDominoButton({
   }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.95);
+    scale.value = withSpring(0.95, springs.snappy);
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1);
+    scale.value = withSpring(1, springs.smooth);
   };
 
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View style={[animatedStyle, styles.dominoWrapper]}>
       <Pressable
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          hapticPatterns.lightTap();
           onPress();
         }}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        style={{
-          flexDirection: 'row',
-          backgroundColor: isDark ? '#1a3a1a' : '#e8f5e9',
-          borderRadius: 8,
-          borderWidth: 2,
-          borderColor: '#4CAF50',
-          borderStyle: 'dashed',
-          marginHorizontal: 4,
-          padding: 4,
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: size * 2 + 18,
-          height: size + 8,
-        }}
+        style={[
+          styles.addButton,
+          { width: size * 2 + 18, height: size + 8 },
+        ]}
       >
-        <Plus size={24} color="#4CAF50" />
+        <Plus size={24} color={obsidianDark.accent.success} />
       </Pressable>
     </Animated.View>
   );
@@ -245,7 +261,6 @@ export function DominoTray({
   const usedDominoIndices = useMemo(() => {
     const used = new Set<number>();
     for (const placement of placements) {
-      // Find the index of this domino in the available list
       for (let i = 0; i < dominoes.length; i++) {
         if (!used.has(i) && dominoId(dominoes[i].pips) === dominoId(placement.domino.pips)) {
           used.add(i);
@@ -260,40 +275,165 @@ export function DominoTray({
   const totalCount = dominoes.length;
 
   return (
-    <View className="w-full">
-      <View className="flex-row justify-between px-4 mb-2">
-        <Text className={`text-sm font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-          {isEditMode ? 'Tap to edit dominoes' : 'Dominoes'}
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerLabel}>
+          {isEditMode ? 'TAP TO EDIT' : 'AVAILABLE DOMINOES'}
         </Text>
-        <Text className={`text-sm font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-          {usedCount}/{totalCount} placed
-        </Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countText}>
+            {usedCount}/{totalCount}
+          </Text>
+        </View>
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-        }}
-        style={{
-          flexGrow: 0,
-        }}
-      >
-        {dominoes.map((domino, index) => (
-          <DominoTile
-            key={`${domino.id}-${index}`}
-            domino={domino}
-            isUsed={usedDominoIndices.has(index)}
-            isDark={isDark}
-            isEditMode={isEditMode}
-            onPress={() => onDominoPress?.(index)}
-          />
-        ))}
-        {isEditMode && onAddDomino && (
-          <AddDominoButton isDark={isDark} onPress={onAddDomino} />
-        )}
-      </ScrollView>
+
+      {/* Brass-bordered tray container */}
+      <View style={styles.trayContainer}>
+        <LinearGradient
+          colors={gradients.brass as unknown as readonly [string, string]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.brassBorder}
+        >
+          <View style={styles.trayInner}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+              style={styles.scrollView}
+            >
+              {dominoes.map((domino, index) => (
+                <DominoTile
+                  key={`${domino.id}-${index}`}
+                  domino={domino}
+                  isUsed={usedDominoIndices.has(index)}
+                  isDark={isDark}
+                  isEditMode={isEditMode}
+                  onPress={() => onDominoPress?.(index)}
+                />
+              ))}
+              {isEditMode && onAddDomino && (
+                <AddDominoButton onPress={onAddDomino} />
+              )}
+            </ScrollView>
+          </View>
+        </LinearGradient>
+      </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  headerLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: obsidianDark.text.muted,
+    letterSpacing: 1,
+  },
+  countBadge: {
+    backgroundColor: obsidianDark.bg.elevated,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: obsidianDark.border.default,
+  },
+  countText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: obsidianDark.text.secondary,
+  },
+  trayContainer: {
+    marginHorizontal: 8,
+  },
+  brassBorder: {
+    borderRadius: radius.lg + 2,
+    padding: 2,
+  },
+  trayInner: {
+    backgroundColor: obsidianDark.bg.slate,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  scrollView: {
+    flexGrow: 0,
+  },
+  scrollContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  dominoWrapper: {
+    marginHorizontal: 4,
+  },
+  dominoTile: {
+    flexDirection: 'row',
+    backgroundColor: obsidianDark.bg.elevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: obsidianDark.border.default,
+    overflow: 'hidden',
+    // 3D shadow effect
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  dominoUsed: {
+    opacity: 0.4,
+    shadowOpacity: 0,
+  },
+  domino3DTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
+  },
+  dominoHalf: {
+    padding: 4,
+  },
+  dominoDivider: {
+    width: 1,
+    backgroundColor: obsidianDark.border.strong,
+  },
+  usedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  strikethrough: {
+    width: '140%',
+    height: 2,
+    backgroundColor: obsidianDark.accent.danger,
+    transform: [{ rotate: '-45deg' }],
+    opacity: 0.6,
+  },
+  dominoEditMode: {
+    borderWidth: 2,
+    borderColor: obsidianDark.accent.cyan,
+    borderRadius: radius.md + 2,
+  },
+  addButton: {
+    backgroundColor: obsidianDark.bg.slate,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: obsidianDark.accent.success,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

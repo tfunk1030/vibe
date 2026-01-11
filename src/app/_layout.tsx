@@ -6,7 +6,9 @@ import { useColorScheme } from '@/lib/useColorScheme';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
+import { View } from 'react-native';
+import { useAppFonts } from '@/lib/fonts';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -33,18 +35,32 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const { fontsLoaded, fontError } = useAppFonts();
+
+  const onLayoutRootView = useCallback(async () => {
+    if (fontsLoaded || fontError) {
+      // Hide splash screen once fonts are loaded (or failed)
+      await SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, fontError]);
 
   useEffect(() => {
-    // Hide splash screen once the app is ready
-    SplashScreen.hideAsync();
-  }, []);
+    onLayoutRootView();
+  }, [onLayoutRootView]);
+
+  // Keep splash screen visible while fonts are loading
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <KeyboardProvider>
-          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-          <RootLayoutNav colorScheme={colorScheme} />
+          <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+            <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+            <RootLayoutNav colorScheme={colorScheme} />
+          </View>
         </KeyboardProvider>
       </GestureHandlerRootView>
     </QueryClientProvider>
