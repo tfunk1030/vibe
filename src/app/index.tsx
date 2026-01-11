@@ -851,44 +851,87 @@ export default function HomeScreen() {
               entering={FadeInDown.delay(200)}
               className="flex-1 px-5"
             >
-              <View
-                className={`rounded-2xl p-8 items-center ${isDark ? 'bg-white/5' : 'bg-black/5'}`}
-              >
-                <View
-                  className={`w-20 h-20 rounded-full items-center justify-center mb-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`}
+              {/* Main Upload Card */}
+              <Pressable onPress={handlePickImage}>
+                <LinearGradient
+                  colors={isDark ? ['#1e3a5f', '#1a1a2e'] : ['#e0f2fe', '#dbeafe']}
+                  style={{
+                    borderRadius: 24,
+                    padding: 32,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.2)',
+                  }}
                 >
-                  <ImageIcon size={36} color={isDark ? '#888' : '#666'} />
-                </View>
-                <Text
-                  className={`text-lg font-semibold text-center mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}
-                >
-                  No puzzle loaded
-                </Text>
-                <Text
-                  className={`text-sm text-center ${isDark ? 'text-gray-500' : 'text-gray-600'}`}
-                >
-                  Upload a screenshot of a NYT Pips puzzle to get started
-                </Text>
-              </View>
+                  <View
+                    style={{
+                      width: 80,
+                      height: 80,
+                      borderRadius: 40,
+                      backgroundColor: '#3B82F6',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 20,
+                      shadowColor: '#3B82F6',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 12,
+                      elevation: 8,
+                    }}
+                  >
+                    <ImageIcon size={36} color="#fff" />
+                  </View>
+                  <Text
+                    className={`text-xl font-bold text-center mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    Upload Screenshot
+                  </Text>
+                  <Text
+                    className={`text-sm text-center ${isDark ? 'text-blue-300' : 'text-blue-600'}`}
+                  >
+                    Tap to select from your photos
+                  </Text>
+                </LinearGradient>
+              </Pressable>
 
-              {/* Action Button */}
+              {/* Tips Section */}
               <View className="mt-6">
-                <ActionButton
-                  onPress={handlePickImage}
-                  icon={<ImageIcon size={20} color="#fff" />}
-                  label="Upload Screenshot"
-                  variant="primary"
-                  isDark={isDark}
-                />
+                <Text
+                  className={`text-xs font-semibold uppercase tracking-wide mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+                >
+                  For best results
+                </Text>
+                <View
+                  className={`rounded-xl p-4 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}
+                >
+                  <View className="flex-row items-center mb-2">
+                    <View className={`w-1.5 h-1.5 rounded-full mr-3 ${isDark ? 'bg-green-400' : 'bg-green-500'}`} />
+                    <Text className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Include both the grid and domino tray
+                    </Text>
+                  </View>
+                  <View className="flex-row items-center mb-2">
+                    <View className={`w-1.5 h-1.5 rounded-full mr-3 ${isDark ? 'bg-green-400' : 'bg-green-500'}`} />
+                    <Text className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Make sure pip dots are clearly visible
+                    </Text>
+                  </View>
+                  <View className="flex-row items-center">
+                    <View className={`w-1.5 h-1.5 rounded-full mr-3 ${isDark ? 'bg-green-400' : 'bg-green-500'}`} />
+                    <Text className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Crop out any extra UI elements
+                    </Text>
+                  </View>
+                </View>
               </View>
 
               {/* Demo Button */}
               <Pressable
                 onPress={handleUseSample}
-                className="mt-6 py-3 items-center"
+                className="mt-8 py-3 items-center"
               >
-                <Text className="text-blue-500 font-medium">
-                  Try with sample puzzle
+                <Text className={`font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  or <Text className="text-blue-500">try a sample puzzle</Text>
                 </Text>
               </Pressable>
             </Animated.View>
