@@ -202,12 +202,19 @@ export function validatePuzzle(puzzle: PuzzleData): ValidationResult {
       errors.push(`Region ${region.id}: 'different' constraint impossible with ${size} cells (max 7 unique pips 0-6).`);
     }
 
-    if (c.type === 'greater' && c.value !== undefined && c.value >= 6) {
-      errors.push(`Region ${region.id}: 'greater than ${c.value}' impossible (max pip is 6).`);
+    if (c.type === 'greater' && c.value !== undefined) {
+      // Sum-based: max possible sum is size * 6
+      const maxSum = size * 6;
+      if (c.value >= maxSum) {
+        errors.push(`Region ${region.id}: 'greater than ${c.value}' impossible for ${size} cells (max sum is ${maxSum}).`);
+      }
     }
 
-    if (c.type === 'less' && c.value !== undefined && c.value <= 0) {
-      errors.push(`Region ${region.id}: 'less than ${c.value}' impossible (min pip is 0).`);
+    if (c.type === 'less' && c.value !== undefined) {
+      // Sum-based: min possible sum is 0
+      if (c.value <= 0) {
+        errors.push(`Region ${region.id}: 'less than ${c.value}' impossible (min sum is 0).`);
+      }
     }
   }
 
@@ -313,9 +320,11 @@ function checkConstraint(
     case 'different':
       return new Set(pips).size === pips.length;
     case 'greater':
-      return pips.every((p) => p > (constraint.value ?? 0));
+      // Sum of all pips must be greater than value
+      return pips.reduce((a, b) => a + b, 0) > (constraint.value ?? 0);
     case 'less':
-      return pips.every((p) => p < (constraint.value ?? 7));
+      // Sum of all pips must be less than value
+      return pips.reduce((a, b) => a + b, 0) < (constraint.value ?? Infinity);
     case 'any':
       return true;
     default:
@@ -340,9 +349,11 @@ function checkPartialConstraint(
       // No duplicates so far
       return new Set(pips).size === pips.length;
     case 'greater':
-      return pips.every((p) => p > (constraint.value ?? 0));
+      // Sum-based: can't prune early since adding more pips increases sum
+      return true;
     case 'less':
-      return pips.every((p) => p < (constraint.value ?? 7));
+      // Sum-based: if sum already >= value, we've failed (can't decrease by adding pips)
+      return pips.reduce((a, b) => a + b, 0) < (constraint.value ?? Infinity);
     case 'any':
       return true;
     default:
@@ -376,15 +387,16 @@ function getCoveredCells(placements: PlacedDomino[]): Set<string> {
 function findBestUncoveredCell(
   validCells: Cell[],
   coveredCells: Set<string>,
-  validCellSet: Set<string>
+  adjacencyMap: Map<string, Cell[]>
 ): Cell | null {
   let bestCell: Cell | null = null;
   let minNeighbors = Infinity;
 
   for (const cell of validCells) {
-    if (coveredCells.has(cellKey(cell))) continue;
+    const key = cellKey(cell);
+    if (coveredCells.has(key)) continue;
 
-    const neighbors = getAdjacentCells(cell, validCellSet);
+    const neighbors = adjacencyMap.get(key) || [];
     const uncoveredNeighbors = neighbors.filter(n => !coveredCells.has(cellKey(n)));
 
     // If a cell has no uncovered neighbors, we're stuck - return it immediately
@@ -402,10 +414,65 @@ function findBestUncoveredCell(
   return bestCell;
 }
 
-// Main solver using backtracking
+// OPTIMIZATION: Forward checking - detect if any uncovered cell is stranded
+function hasStrandedCell(
+  validCells: Cell[],
+  coveredCells: Set<string>,
+  adjacencyMap: Map<string, Cell[]>
+): boolean {
+  for (const cell of validCells) {
+    const key = cellKey(cell);
+    if (coveredCells.has(key)) continue;
+
+    const neighbors = adjacencyMap.get(key) || [];
+    const uncoveredNeighbors = neighbors.filter(n => !coveredCells.has(cellKey(n)));
+
+    // Cell has no valid pairing options - dead end
+    if (uncoveredNeighbors.length === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// OPTIMIZATION: Order dominoes by constraint relevance
+// Prioritize dominoes whose sums match 2-cell region constraints
+function getOrderedDominoIndices(
+  dominoes: Domino[],
+  usedIndices: Set<number>,
+  regionsToCheck: Region[]
+): number[] {
+  const indices = dominoes
+    .map((_, i) => i)
+    .filter(i => !usedIndices.has(i));
+
+  // Find sums needed for 2-cell sum constraints (tightest constraints)
+  const neededSums = new Set<number>();
+  for (const r of regionsToCheck) {
+    if (r.constraint.type === 'sum' && r.cells.length === 2 && r.constraint.value !== undefined) {
+      neededSums.add(r.constraint.value);
+    }
+  }
+
+  // If no specific constraints, return unsorted
+  if (neededSums.size === 0) {
+    return indices;
+  }
+
+  // Prioritize dominoes matching needed sums
+  return indices.sort((a, b) => {
+    const sumA = dominoes[a].pips[0] + dominoes[a].pips[1];
+    const sumB = dominoes[b].pips[0] + dominoes[b].pips[1];
+    const aNeeded = neededSums.has(sumA) ? 0 : 1;
+    const bNeeded = neededSums.has(sumB) ? 0 : 1;
+    return aNeeded - bNeeded;
+  });
+}
+
+// Main solver using backtracking with optimizations
 function solve(
   puzzle: PuzzleData,
-  validCellSet: Set<string>,
+  adjacencyMap: Map<string, Cell[]>,
   placements: PlacedDomino[],
   usedDominoes: Set<number>,
   regionsToCheck: Region[]
@@ -413,7 +480,7 @@ function solve(
   const coveredCells = getCoveredCells(placements);
 
   // Find best uncovered cell (MRV heuristic)
-  const uncoveredCell = findBestUncoveredCell(puzzle.validCells, coveredCells, validCellSet);
+  const uncoveredCell = findBestUncoveredCell(puzzle.validCells, coveredCells, adjacencyMap);
 
   // If all cells covered, verify final constraints
   if (!uncoveredCell) {
@@ -426,7 +493,7 @@ function solve(
   }
 
   // Get adjacent uncovered cells we can pair with
-  const neighbors = getAdjacentCells(uncoveredCell, validCellSet);
+  const neighbors = adjacencyMap.get(cellKey(uncoveredCell)) || [];
   const uncoveredNeighbors = neighbors.filter(n => !coveredCells.has(cellKey(n)));
 
   // If no uncovered neighbors, this path is impossible
@@ -434,12 +501,17 @@ function solve(
     return null;
   }
 
+  // OPTIMIZATION: Get dominoes ordered by constraint relevance
+  const orderedDominoIndices = getOrderedDominoIndices(
+    puzzle.availableDominoes,
+    usedDominoes,
+    regionsToCheck
+  );
+
   // Try each neighbor cell
   for (const neighborCell of uncoveredNeighbors) {
-    // Try each available domino
-    for (let i = 0; i < puzzle.availableDominoes.length; i++) {
-      if (usedDominoes.has(i)) continue;
-
+    // Try each available domino (in optimized order)
+    for (const i of orderedDominoIndices) {
       const domino = puzzle.availableDominoes[i];
 
       // Try both orientations of the domino (which pip goes to which cell)
@@ -468,11 +540,17 @@ function solve(
           }
         }
 
-        if (valid) {
-          const result = solve(puzzle, validCellSet, newPlacements, newUsed, regionsToCheck);
-          if (result) {
-            return result;
-          }
+        if (!valid) continue;
+
+        // OPTIMIZATION: Forward checking - detect dead ends early
+        const newCovered = getCoveredCells(newPlacements);
+        if (hasStrandedCell(puzzle.validCells, newCovered, adjacencyMap)) {
+          continue; // Skip this branch - will lead to dead end
+        }
+
+        const result = solve(puzzle, adjacencyMap, newPlacements, newUsed, regionsToCheck);
+        if (result) {
+          return result;
         }
       }
     }
@@ -482,6 +560,8 @@ function solve(
 }
 
 export function solvePuzzle(puzzle: PuzzleData): PuzzleSolution {
+  const solverStartTime = Date.now();
+  console.log('[Solver] ========== SOLVER START ==========');
   console.log('[Solver] Starting solve...', {
     cells: puzzle.validCells.length,
     dominoes: puzzle.availableDominoes.length,
@@ -610,18 +690,30 @@ export function solvePuzzle(puzzle: PuzzleData): PuzzleSolution {
     });
   }
 
-  // validCellSet is already defined above for island detection, reuse it
-  try {
-    const result = solve(puzzle, validCellSet, [], new Set(), regionsToCheck);
+  // OPTIMIZATION: Precompute adjacency map once (avoids recalculating per cell)
+  const adjacencyMap = new Map<string, Cell[]>();
+  for (const cell of puzzle.validCells) {
+    adjacencyMap.set(cellKey(cell), getAdjacentCells(cell, validCellSet));
+  }
+  console.log('[Solver] Precomputed adjacency map for', adjacencyMap.size, 'cells');
 
+  const solveStart = Date.now();
+  try {
+    const result = solve(puzzle, adjacencyMap, [], new Set(), regionsToCheck);
+
+    const solveDuration = Date.now() - solveStart;
+    const totalSolverTime = Date.now() - solverStartTime;
     if (result) {
-      console.log('[Solver] Solution found with', result.length, 'placements');
+      console.log('[Solver] ========== SOLVER COMPLETE ==========');
+      console.log(`[Solver] [TIMING] Backtracking search: ${solveDuration}ms`);
+      console.log(`[Solver] [TIMING] Total solver time: ${totalSolverTime}ms`);
+      console.log(`[Solver] Solution found with ${result.length} placements`);
       return {
         placements: result,
         isValid: true,
       };
     } else {
-      console.log('[Solver] No solution found');
+      console.log(`[Solver] No solution found (searched for ${solveDuration}ms)`);
 
       // Analyze why - check if constraints are even satisfiable
       const allPips = puzzle.availableDominoes.flatMap(d => d.pips);

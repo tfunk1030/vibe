@@ -559,7 +559,7 @@ import json, sys
 data = json.load(sys.stdin)
 path = data.get('tool_input', {}).get('file_path', '')
 
-BLOCKED = ['.env', 'secrets.json', '.git/']
+BLOCKED = ['.env', 'secrets.json']
 if any(b in path for b in BLOCKED):
     print(json.dumps({
         "hookSpecificOutput": {

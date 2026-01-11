@@ -45,6 +45,7 @@ import { SavePuzzleModal } from '@/components/SavePuzzleModal';
 import { GridSizeHintModal } from '@/components/GridSizeHintModal';
 import { DualImageCropper } from '@/components/DualImageCropper';
 import { IslandConfigModal } from '@/components/IslandConfigModal';
+import { PuzzleSetupWizard } from '@/components/PuzzleSetupWizard';
 import { ActionButton } from '@/components/ActionButton';
 import { ExtractionProgress } from '@/components/ExtractionProgress';
 import { EmptyPuzzleState } from '@/components/EmptyPuzzleState';
@@ -97,6 +98,9 @@ export default function HomeScreen() {
   const [showIslandConfigModal, setShowIslandConfigModal] = useState(false);
   const [islandConfigs, setIslandConfigs] = useState<IslandConfig[]>([]);
   const [isMultiIslandMode, setIsMultiIslandMode] = useState(false);
+
+  // New unified wizard
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
 
   // Store state
   const puzzle = usePuzzleStore((s) => s.puzzle);
@@ -256,7 +260,7 @@ export default function HomeScreen() {
 
   const { mutate: extractMultiIsland } = multiIslandExtractMutation;
 
-  // Pick image from library
+  // Pick image from library - now uses unified wizard
   const handlePickImage = useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -266,10 +270,44 @@ export default function HomeScreen() {
     if (!result.canceled && result.assets[0]) {
       setPendingImageUri(result.assets[0].uri);
       setImageUri(result.assets[0].uri);
-      // Show island mode choice first
-      setShowIslandModeChoice(true);
+      // Show new unified wizard instead of multiple modals
+      setShowSetupWizard(true);
     }
   }, [setImageUri]);
+
+  // Handle wizard completion (single grid)
+  const handleWizardComplete = useCallback(
+    (dominoUri: string, gridUri: string, sizeHint?: GridSizeHint) => {
+      setShowSetupWizard(false);
+      extractDualPuzzle({
+        dominoImageUri: dominoUri,
+        gridImageUri: gridUri,
+        sizeHint: sizeHint,
+      });
+      setPendingImageUri(null);
+    },
+    [extractDualPuzzle]
+  );
+
+  // Handle wizard completion (multi-island)
+  const handleWizardCompleteMulti = useCallback(
+    (dominoUri: string, gridUris: string[], configs: IslandConfig[]) => {
+      setShowSetupWizard(false);
+      extractMultiIsland({
+        dominoImageUri: dominoUri,
+        gridImageUris: gridUris,
+        islandConfigs: configs,
+      });
+      setPendingImageUri(null);
+    },
+    [extractMultiIsland]
+  );
+
+  // Handle wizard close
+  const handleWizardClose = useCallback(() => {
+    setShowSetupWizard(false);
+    setPendingImageUri(null);
+  }, []);
 
   // Handle island mode choice
   const handleSingleIsland = useCallback(() => {
@@ -1240,7 +1278,7 @@ export default function HomeScreen() {
         imageUri={pendingImageUri ?? undefined}
       />
 
-      {/* Dual Image Cropper Modal */}
+      {/* Dual Image Cropper Modal (legacy - kept for backwards compatibility) */}
       <DualImageCropper
         visible={showDualCropper}
         sourceImageUri={pendingImageUri ?? ''}
@@ -1249,6 +1287,16 @@ export default function HomeScreen() {
         isDark={isDark}
         islandConfigs={isMultiIslandMode ? islandConfigs : undefined}
         onCompleteMulti={isMultiIslandMode ? handleMultiIslandCropperComplete : undefined}
+      />
+
+      {/* New Unified Setup Wizard */}
+      <PuzzleSetupWizard
+        visible={showSetupWizard}
+        sourceImageUri={pendingImageUri ?? ''}
+        onComplete={handleWizardComplete}
+        onCompleteMulti={handleWizardCompleteMulti}
+        onClose={handleWizardClose}
+        isDark={isDark}
       />
 
       {/* Clear All Confirmation Modal */}

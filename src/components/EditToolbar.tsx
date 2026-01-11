@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import Animated, {
   FadeIn,
@@ -14,6 +14,8 @@ import {
   PaintBucket,
   Undo2,
   Redo2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Region, constraintLabel } from '@/lib/types/puzzle';
@@ -47,6 +49,8 @@ function ToolButton({
   isDark,
   small = false,
   activeColor,
+  disabled = false,
+  accessibilityLabel,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -55,6 +59,8 @@ function ToolButton({
   isDark: boolean;
   small?: boolean;
   activeColor?: string;
+  disabled?: boolean;
+  accessibilityLabel?: string;
 }) {
   const scale = useSharedValue(1);
 
@@ -72,29 +78,36 @@ function ToolButton({
     <Animated.View style={animatedStyle}>
       <Pressable
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          onPress();
+          if (!disabled) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onPress();
+          }
         }}
         onPressIn={() => {
-          scale.value = withSpring(0.95);
+          if (!disabled) scale.value = withSpring(0.95);
         }}
         onPressOut={() => {
           scale.value = withSpring(1);
         }}
+        accessibilityLabel={accessibilityLabel || label}
+        accessibilityRole="button"
+        accessibilityState={{ disabled, selected: isActive }}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingVertical: small ? 6 : 10,
-          paddingHorizontal: small ? 10 : 14,
-          borderRadius: 10,
+          minHeight: 44,
+          paddingVertical: small ? 10 : 12,
+          paddingHorizontal: small ? 12 : 16,
+          borderRadius: 12,
           backgroundColor: bgColor,
-          gap: 6,
+          gap: 8,
+          opacity: disabled ? 0.4 : 1,
         }}
       >
         {icon}
         <Text
           style={{
-            fontSize: small ? 12 : 13,
+            fontSize: small ? 13 : 14,
             fontWeight: '600',
             color: isActive ? '#fff' : isDark ? '#ccc' : '#555',
           }}
@@ -126,7 +139,7 @@ function RegionChip({
   }));
 
   return (
-    <Animated.View style={[animatedStyle, { marginRight: 8 }]}>
+    <Animated.View style={[animatedStyle, { marginRight: 10 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Pressable
           onPress={() => {
@@ -139,14 +152,18 @@ function RegionChip({
           onPressOut={() => {
             scale.value = withSpring(1);
           }}
+          accessibilityLabel={`Select region ${constraintLabel(region.constraint)}`}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isSelected }}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingVertical: 8,
-            paddingLeft: 10,
-            paddingRight: 6,
-            borderTopLeftRadius: 10,
-            borderBottomLeftRadius: 10,
+            minHeight: 44,
+            paddingVertical: 10,
+            paddingLeft: 14,
+            paddingRight: 10,
+            borderTopLeftRadius: 12,
+            borderBottomLeftRadius: 12,
             backgroundColor: isSelected
               ? region.color
               : isDark
@@ -155,20 +172,20 @@ function RegionChip({
             borderWidth: isSelected ? 2 : 1,
             borderRightWidth: 0,
             borderColor: isSelected ? region.color : isDark ? '#444' : '#ddd',
-            gap: 6,
+            gap: 8,
           }}
         >
           <View
             style={{
-              width: 14,
-              height: 14,
-              borderRadius: 3,
+              width: 18,
+              height: 18,
+              borderRadius: 4,
               backgroundColor: isSelected ? '#fff' : region.color,
             }}
           />
           <Text
             style={{
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: '600',
               color: isSelected ? '#fff' : isDark ? '#fff' : '#333',
             }}
@@ -181,11 +198,15 @@ function RegionChip({
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             onEditPress();
           }}
+          accessibilityLabel={`Edit region ${constraintLabel(region.constraint)}`}
+          accessibilityRole="button"
           style={{
-            paddingVertical: 8,
-            paddingHorizontal: 8,
-            borderTopRightRadius: 10,
-            borderBottomRightRadius: 10,
+            minHeight: 44,
+            minWidth: 44,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            borderTopRightRadius: 12,
+            borderBottomRightRadius: 12,
             backgroundColor: isSelected
               ? region.color
               : isDark
@@ -194,9 +215,11 @@ function RegionChip({
             borderWidth: isSelected ? 2 : 1,
             borderLeftWidth: 0,
             borderColor: isSelected ? region.color : isDark ? '#444' : '#ddd',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          <Pencil size={14} color={isSelected ? '#fff' : isDark ? '#888' : '#666'} />
+          <Pencil size={18} color={isSelected ? '#fff' : isDark ? '#888' : '#666'} />
         </Pressable>
       </View>
     </Animated.View>
@@ -274,6 +297,8 @@ export function EditToolbar({
   onUndo,
   onRedo,
 }: EditToolbarProps) {
+  const [showTools, setShowTools] = useState(true);
+
   // Get selected region color for paint bucket icon
   const selectedRegion = regions.find(r => r.id === selectedRegionId);
   const paintBucketColor = isPaintBucketMode
@@ -282,25 +307,40 @@ export function EditToolbar({
 
   return (
     <Animated.View entering={FadeIn} className="mb-4">
-      {/* Instructions */}
-      <View className="px-5 mb-3">
+      {/* Instructions banner */}
+      <View
+        className="mx-5 mb-3 px-4 py-3 rounded-xl"
+        style={{
+          backgroundColor: isRemoveCellMode
+            ? '#EF444420'
+            : isPaintBucketMode
+              ? `${selectedRegion?.color ?? '#3B82F6'}20`
+              : isDark ? '#ffffff10' : '#00000008',
+          borderWidth: 1,
+          borderColor: isRemoveCellMode
+            ? '#EF444440'
+            : isPaintBucketMode
+              ? `${selectedRegion?.color ?? '#3B82F6'}40`
+              : isDark ? '#ffffff15' : '#00000010',
+        }}
+      >
         <Text
           style={{
-            fontSize: 13,
+            fontSize: 14,
             color: isRemoveCellMode
               ? '#EF4444'
               : isPaintBucketMode
                 ? selectedRegion?.color ?? '#3B82F6'
-                : isDark ? '#888' : '#666',
+                : isDark ? '#aaa' : '#555',
             textAlign: 'center',
-            fontWeight: isPaintBucketMode ? '600' : '400',
+            fontWeight: '500',
           }}
         >
           {isRemoveCellMode
             ? 'Tap cells to remove them from the grid'
             : isPaintBucketMode
               ? 'Tap to fill all connected cells with selected region'
-              : 'Select a region, then tap cells to assign them'}
+              : 'Select a region below, then tap cells to assign'}
         </Text>
       </View>
 
@@ -310,7 +350,7 @@ export function EditToolbar({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: 16,
-          paddingBottom: 4,
+          paddingBottom: 8,
         }}
         style={{ flexGrow: 0 }}
       >
@@ -327,50 +367,86 @@ export function EditToolbar({
         <AddRegionButton onPress={onAddRegion} isDark={isDark} />
       </ScrollView>
 
-      {/* Grid tools */}
-      <View className="flex-row justify-center gap-2 px-5 mt-3">
-        <ToolButton
-          icon={<Undo2 size={16} color={canUndo ? (isDark ? '#ccc' : '#555') : (isDark ? '#555' : '#bbb')} />}
-          label="Undo"
-          onPress={onUndo ?? (() => {})}
-          isDark={isDark}
-          small
-          isActive={false}
-        />
-        <ToolButton
-          icon={<Redo2 size={16} color={canRedo ? (isDark ? '#ccc' : '#555') : (isDark ? '#555' : '#bbb')} />}
-          label="Redo"
-          onPress={onRedo ?? (() => {})}
-          isDark={isDark}
-          small
-          isActive={false}
-        />
-        <ToolButton
-          icon={<Grid3X3 size={16} color={isDark ? '#ccc' : '#555'} />}
-          label="Grid Size"
-          onPress={onGridSize}
-          isDark={isDark}
-          small
-        />
-        <ToolButton
-          icon={<PaintBucket size={16} color={paintBucketColor} />}
-          label="Fill Area"
-          onPress={onTogglePaintBucketMode ?? (() => {})}
-          isDark={isDark}
-          small
-          isActive={isPaintBucketMode}
-          activeColor={selectedRegion?.color ?? '#3B82F6'}
-        />
-        <ToolButton
-          icon={<Trash2 size={16} color={isRemoveCellMode ? '#fff' : '#EF4444'} />}
-          label="Remove"
-          onPress={onToggleRemoveCellMode ?? (() => {})}
-          isDark={isDark}
-          small
-          isActive={isRemoveCellMode}
-          activeColor="#EF4444"
-        />
-      </View>
+      {/* Collapsible tools header */}
+      <Pressable
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setShowTools(!showTools);
+        }}
+        accessibilityLabel={showTools ? 'Hide tools' : 'Show tools'}
+        accessibilityRole="button"
+        className="flex-row items-center justify-center py-2 mx-5"
+      >
+        <Text style={{ fontSize: 13, color: isDark ? '#666' : '#999', marginRight: 4 }}>
+          {showTools ? 'Tools' : 'Show Tools'}
+        </Text>
+        {showTools ? (
+          <ChevronUp size={14} color={isDark ? '#666' : '#999'} />
+        ) : (
+          <ChevronDown size={14} color={isDark ? '#666' : '#999'} />
+        )}
+      </Pressable>
+
+      {/* Grid tools - collapsible */}
+      {showTools && (
+        <Animated.View entering={FadeIn} className="px-5">
+          {/* Undo/Redo row */}
+          <View className="flex-row justify-center gap-3 mb-2">
+            <ToolButton
+              icon={<Undo2 size={18} color={canUndo ? (isDark ? '#ccc' : '#555') : (isDark ? '#444' : '#ccc')} />}
+              label="Undo"
+              onPress={onUndo ?? (() => {})}
+              isDark={isDark}
+              small
+              isActive={false}
+              disabled={!canUndo}
+              accessibilityLabel={canUndo ? 'Undo last action' : 'Nothing to undo'}
+            />
+            <ToolButton
+              icon={<Redo2 size={18} color={canRedo ? (isDark ? '#ccc' : '#555') : (isDark ? '#444' : '#ccc')} />}
+              label="Redo"
+              onPress={onRedo ?? (() => {})}
+              isDark={isDark}
+              small
+              isActive={false}
+              disabled={!canRedo}
+              accessibilityLabel={canRedo ? 'Redo last action' : 'Nothing to redo'}
+            />
+          </View>
+
+          {/* Grid tools row */}
+          <View className="flex-row justify-center gap-3">
+            <ToolButton
+              icon={<Grid3X3 size={18} color={isDark ? '#ccc' : '#555'} />}
+              label="Grid Size"
+              onPress={onGridSize}
+              isDark={isDark}
+              small
+              accessibilityLabel="Change grid size"
+            />
+            <ToolButton
+              icon={<PaintBucket size={18} color={paintBucketColor} />}
+              label="Fill"
+              onPress={onTogglePaintBucketMode ?? (() => {})}
+              isDark={isDark}
+              small
+              isActive={isPaintBucketMode}
+              activeColor={selectedRegion?.color ?? '#3B82F6'}
+              accessibilityLabel={isPaintBucketMode ? 'Disable paint bucket mode' : 'Enable paint bucket mode'}
+            />
+            <ToolButton
+              icon={<Trash2 size={18} color={isRemoveCellMode ? '#fff' : '#EF4444'} />}
+              label="Remove"
+              onPress={onToggleRemoveCellMode ?? (() => {})}
+              isDark={isDark}
+              small
+              isActive={isRemoveCellMode}
+              activeColor="#EF4444"
+              accessibilityLabel={isRemoveCellMode ? 'Disable remove mode' : 'Enable remove mode'}
+            />
+          </View>
+        </Animated.View>
+      )}
     </Animated.View>
   );
 }

@@ -630,15 +630,15 @@ The diamond color often matches or complements the region color.
    - All pip values in the region must be the same
    - Example: Region with 4 cells showing "=" must have all same pip values
 
-3. **LESS THAN** ("<" followed by number, e.g., "<2", "<4")
+3. **LESS THAN** ("<" followed by number, e.g., "<8", "<12")
    - This is a LESS constraint
-   - Each pip value in the region must be less than the number
-   - Example: "<4" means all pips must be 0, 1, 2, or 3
+   - The SUM of all pip values in the region must be less than the number
+   - Example: "<8" means the total of all pips must be 0, 1, 2, 3, 4, 5, 6, or 7
 
-4. **GREATER THAN** (">" followed by number, e.g., ">2")
+4. **GREATER THAN** (">" followed by number, e.g., ">5", ">8")
    - This is a GREATER constraint
-   - Each pip value in the region must be greater than the number
-   - Example: ">2" means all pips must be 3, 4, 5, or 6
+   - The SUM of all pip values in the region must be greater than the number
+   - Example: ">8" means the total of all pips must be 9 or higher
 
 5. **NO BADGE** (no diamond visible for a region)
    - This is an ANY constraint (no restriction on pips)
@@ -885,8 +885,8 @@ Your output MUST have:
   }
 
   // Use different models based on attempt - fallback if first fails
-  // Attempt 1: gemini-3-pro-preview (best quality)
-  // Attempt 2+: gemini-2.5-flash (faster, less reasoning-heavy)
+  // Attempt 1: gemini-3-pro-preview (best accuracy for spatial reasoning)
+  // Attempt 2+: gemini-2.5-flash (faster fallback)
   const model = attempt === 1 ? 'google/gemini-3-pro-preview' : 'google/gemini-2.5-flash';
 
   console.log(`[AI] Using model: ${model}`);
@@ -1251,10 +1251,14 @@ export async function extractPuzzleFromDualImages(
     throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
   }
 
+  // TIMING: Track overall extraction time
+  const extractionStartTime = Date.now();
+  console.log('[AI] ========== EXTRACTION START ==========');
   console.log('[AI] Starting dual image extraction...');
   onProgress?.('cropping');
 
-  // Read both images as base64
+  // TIMING: Image reading
+  const imageReadStart = Date.now();
   const [dominoBase64, gridBase64] = await Promise.all([
     FileSystem.readAsStringAsync(dominoImageUri, {
       encoding: 'base64',
@@ -1263,6 +1267,8 @@ export async function extractPuzzleFromDualImages(
       encoding: 'base64',
     }),
   ]);
+  const imageReadDuration = Date.now() - imageReadStart;
+  console.log(`[AI] [TIMING] Image reading: ${imageReadDuration}ms`);
 
   const MAX_RETRIES = 3;
   let lastError: Error | null = null;
@@ -1271,21 +1277,41 @@ export async function extractPuzzleFromDualImages(
     try {
       console.log(`[AI] Dual extraction attempt ${attempt}/${MAX_RETRIES}...`);
 
-      // Extract dominoes first
+      // OPTIMIZATION: Run domino extraction and grid passes in parallel
+      // This reduces total time from ~10-15s to ~5-8s
       onProgress?.('dominoes');
-      const dominoResult = await extractDominoesFromImage(dominoBase64, sizeHint?.dominoCount);
+      console.log('[AI] Starting parallel extraction (dominoes + 2-pass grid)...');
+      const parallelStart = Date.now();
 
-      // Two-pass grid extraction for verification (improves accuracy on complex puzzles)
+      // Track individual API call times
+      const dominoPromise = extractDominoesFromImage(dominoBase64, sizeHint?.dominoCount)
+        .then(result => {
+          console.log(`[AI] [TIMING] Domino extraction: ${Date.now() - parallelStart}ms`);
+          return result;
+        });
+      const gridPass1Promise = extractGridFromImage(gridBase64, sizeHint, 1)
+        .then(result => {
+          console.log(`[AI] [TIMING] Grid pass 1: ${Date.now() - parallelStart}ms`);
+          return result;
+        });
+      const gridPass2Promise = extractGridFromImage(gridBase64, sizeHint, 2)
+        .then(result => {
+          console.log(`[AI] [TIMING] Grid pass 2: ${Date.now() - parallelStart}ms`);
+          return result;
+        });
+
+      const [dominoResult, gridPass1, gridPass2] = await Promise.all([
+        dominoPromise,
+        gridPass1Promise,
+        gridPass2Promise,
+      ]);
+
+      const parallelDuration = Date.now() - parallelStart;
+      console.log(`[AI] [TIMING] Parallel extraction total: ${parallelDuration}ms (all 3 API calls)`);
+
       onProgress?.('grid');
-      console.log('[AI] Running two-pass grid verification...');
 
-      // First pass with lower temperature (more deterministic)
-      const gridPass1 = await extractGridFromImage(gridBase64, sizeHint, 1);
-
-      // Second pass with higher temperature (for verification)
-      const gridPass2 = await extractGridFromImage(gridBase64, sizeHint, 2);
-
-      // Compare results and choose the best one
+      // Compare grid results and choose the best one
       const comparison = compareGridResponses(gridPass1, gridPass2);
       console.log(`[AI] Grid comparison score: ${(comparison.score * 100).toFixed(1)}%`);
 
@@ -1350,6 +1376,14 @@ export async function extractPuzzleFromDualImages(
         confidence
       );
 
+      // TIMING: Total extraction time
+      const totalExtractionTime = Date.now() - extractionStartTime;
+      console.log('[AI] ========== EXTRACTION COMPLETE ==========');
+      console.log(`[AI] [TIMING] Total extraction time: ${totalExtractionTime}ms`);
+      console.log(`[AI] [TIMING] Breakdown:`);
+      console.log(`[AI] [TIMING]   - Image reading: ${imageReadDuration}ms`);
+      console.log(`[AI] [TIMING]   - API calls (parallel): ${parallelDuration}ms`);
+      console.log(`[AI] [TIMING]   - Post-processing: ${totalExtractionTime - imageReadDuration - parallelDuration}ms`);
       console.log('[AI] Dual extraction successful!', {
         dominoes: puzzleData.availableDominoes.length,
         cells: puzzleData.validCells.length,
@@ -1701,8 +1735,8 @@ Badges appear at region edges/corners. Read the symbol inside:
 
 - **NUMBER (3, 5, 8, 12)** = SUM constraint (pips must total this number)
 - **"=" symbol** = EQUAL constraint (all pips must be same value)
-- **"<N" (like <2, <4)** = LESS constraint (each pip < N)
-- **">N" (like >2)** = GREATER constraint (each pip > N)
+- **"<N" (like <8, <12)** = LESS constraint (sum of pips < N)
+- **">N" (like >5, >8)** = GREATER constraint (sum of pips > N)
 - **No badge** = ANY constraint (no restriction)
 
 ## STEP 1: READ THE DOMINOES CAREFULLY

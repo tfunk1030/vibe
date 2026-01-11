@@ -23,7 +23,14 @@
       "Bash(npx expo install:*)",
       "Bash(npx expo-doctor@latest)",
       "Bash(cat:*)",
-      "Skill(frontend-app-design)"
+      "Skill(frontend-app-design)",
+      "mcp__codex__codex",
+      "Bash(if not exist \"C:\\\\Users\\\\tfunk\\\\vibe\\\\thoughts\\\\handoffs\" mkdir \"C:\\\\Users\\\\tfunk\\\\vibe\\\\thoughts\\\\handoffs\")"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "spawner",
+    "codex"
+  ]
 }
