@@ -9,6 +9,248 @@ import {
   areCellsAdjacent,
 } from '../types/puzzle';
 
+// ==========================================
+// Puzzle Validation
+// ==========================================
+
+export interface ValidationResult {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * Comprehensive puzzle validation before solving.
+ * Catches extraction errors and impossible puzzles early.
+ */
+export function validatePuzzle(puzzle: PuzzleData): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const key = (c: Cell) => `${c.row},${c.col}`;
+  const validSet = new Set(puzzle.validCells.map(key));
+
+  // 1. Basic validation - empty puzzle
+  if (puzzle.validCells.length === 0) {
+    errors.push('No valid cells in puzzle.');
+    return { ok: false, errors, warnings };
+  }
+
+  // 2. Check for duplicate valid cells
+  const seenCells = new Set<string>();
+  for (const cell of puzzle.validCells) {
+    const k = key(cell);
+    if (seenCells.has(k)) {
+      errors.push(`Duplicate cell at (${cell.row},${cell.col}).`);
+    }
+    seenCells.add(k);
+  }
+
+  // 3. Tiling feasibility - odd cell count
+  if (puzzle.validCells.length % 2 !== 0) {
+    errors.push(`Tiling impossible: ${puzzle.validCells.length} cells (odd number). Dominoes need pairs.`);
+  }
+
+  // 4. Domino count match
+  const expectedDominoes = puzzle.validCells.length / 2;
+  if (puzzle.availableDominoes.length !== expectedDominoes) {
+    errors.push(`Domino count mismatch: ${puzzle.availableDominoes.length} dominoes for ${puzzle.validCells.length} cells (need ${expectedDominoes}).`);
+  }
+
+  // 5. Domino pip validation (0-6 range)
+  for (let i = 0; i < puzzle.availableDominoes.length; i++) {
+    const d = puzzle.availableDominoes[i];
+    if (d.pips[0] < 0 || d.pips[0] > 6 || d.pips[1] < 0 || d.pips[1] > 6) {
+      errors.push(`Domino ${i + 1} has invalid pips [${d.pips[0]},${d.pips[1]}]. Must be 0-6.`);
+    }
+  }
+
+  // 6. Region integrity checks
+  const coveredByRegion = new Map<string, string>();
+
+  for (const region of puzzle.regions) {
+    // Check for empty region
+    if (region.cells.length === 0) {
+      warnings.push(`Region ${region.id} has no cells.`);
+      continue;
+    }
+
+    // Check for duplicate cells within region
+    const regionCellKeys = region.cells.map(key);
+    if (new Set(regionCellKeys).size !== regionCellKeys.length) {
+      errors.push(`Region ${region.id} has duplicate cells.`);
+    }
+
+    // Check cells valid and no overlaps between regions
+    for (const cell of region.cells) {
+      const k = key(cell);
+      if (!validSet.has(k)) {
+        errors.push(`Region ${region.id} contains cell (${cell.row},${cell.col}) not in valid grid.`);
+      }
+      if (coveredByRegion.has(k)) {
+        errors.push(`Cell (${cell.row},${cell.col}) overlaps: regions ${coveredByRegion.get(k)} and ${region.id}.`);
+      } else {
+        coveredByRegion.set(k, region.id);
+      }
+    }
+
+    // Check region contiguity via BFS
+    if (region.cells.length > 1) {
+      const regionSet = new Set(region.cells.map(key));
+      const seen = new Set<string>();
+      const stack: Cell[] = [region.cells[0]];
+
+      while (stack.length > 0) {
+        const cur = stack.pop()!;
+        const k = key(cur);
+        if (seen.has(k)) continue;
+        seen.add(k);
+
+        const neighbors = [
+          { row: cur.row - 1, col: cur.col },
+          { row: cur.row + 1, col: cur.col },
+          { row: cur.row, col: cur.col - 1 },
+          { row: cur.row, col: cur.col + 1 },
+        ];
+
+        for (const n of neighbors) {
+          const nk = key(n);
+          if (regionSet.has(nk) && !seen.has(nk)) {
+            stack.push(n);
+          }
+        }
+      }
+
+      if (seen.size !== regionSet.size) {
+        errors.push(`Region ${region.id} is not contiguous (${seen.size} connected, ${regionSet.size} total).`);
+      }
+    }
+  }
+
+  // 7. Check for orphan cells (warning, not error - they get 'any' constraint)
+  const orphanCount = puzzle.validCells.filter(c => !coveredByRegion.has(key(c))).length;
+  if (orphanCount > 0) {
+    warnings.push(`${orphanCount} cell(s) not assigned to any region (will use 'any' constraint).`);
+  }
+
+  // 8. Checkerboard parity per connected component
+  const adj = new Map<string, string[]>();
+  for (const cell of puzzle.validCells) {
+    const k = key(cell);
+    const neighbors = [
+      { row: cell.row - 1, col: cell.col },
+      { row: cell.row + 1, col: cell.col },
+      { row: cell.row, col: cell.col - 1 },
+      { row: cell.row, col: cell.col + 1 },
+    ].map(key).filter(nk => validSet.has(nk));
+    adj.set(k, neighbors);
+  }
+
+  const componentSeen = new Set<string>();
+  let componentIndex = 0;
+
+  for (const cell of puzzle.validCells) {
+    const startKey = key(cell);
+    if (componentSeen.has(startKey)) continue;
+
+    const stack = [startKey];
+    let count = 0;
+    let black = 0;
+    let white = 0;
+
+    while (stack.length > 0) {
+      const k = stack.pop()!;
+      if (componentSeen.has(k)) continue;
+      componentSeen.add(k);
+      count++;
+
+      const [rStr, cStr] = k.split(',');
+      const r = Number(rStr);
+      const c = Number(cStr);
+      if ((r + c) % 2 === 0) black++;
+      else white++;
+
+      for (const nk of adj.get(k) ?? []) {
+        if (!componentSeen.has(nk)) stack.push(nk);
+      }
+    }
+
+    componentIndex++;
+
+    if (count % 2 !== 0) {
+      errors.push(`Island ${componentIndex}: ${count} cells (odd). Tiling impossible.`);
+    }
+
+    if (black !== white) {
+      errors.push(`Island ${componentIndex}: checkerboard parity mismatch (${black} black, ${white} white cells).`);
+    }
+  }
+
+  // 9. Constraint validation
+  for (const region of puzzle.regions) {
+    const size = region.cells.length;
+    const c = region.constraint;
+
+    if (c.type === 'sum' && c.value !== undefined) {
+      const minPossible = 0; // All 0s
+      const maxPossible = size * 6; // All 6s
+      if (c.value < minPossible || c.value > maxPossible) {
+        errors.push(`Region ${region.id}: sum=${c.value} impossible for ${size} cells (range: ${minPossible}-${maxPossible}).`);
+      }
+    }
+
+    if (c.type === 'different' && size > 7) {
+      errors.push(`Region ${region.id}: 'different' constraint impossible with ${size} cells (max 7 unique pips 0-6).`);
+    }
+
+    if (c.type === 'greater' && c.value !== undefined && c.value >= 6) {
+      errors.push(`Region ${region.id}: 'greater than ${c.value}' impossible (max pip is 6).`);
+    }
+
+    if (c.type === 'less' && c.value !== undefined && c.value <= 0) {
+      errors.push(`Region ${region.id}: 'less than ${c.value}' impossible (min pip is 0).`);
+    }
+  }
+
+  // 10. Check for sum constraints that can't be satisfied with available dominoes
+  const dominoSums = puzzle.availableDominoes.map(d => d.pips[0] + d.pips[1]);
+  const allPips = puzzle.availableDominoes.flatMap(d => d.pips);
+  const totalPipSum = allPips.reduce((a, b) => a + b, 0);
+
+  // For 2-cell adjacent sum regions, check if a domino with that sum exists
+  for (const region of puzzle.regions) {
+    if (region.constraint.type === 'sum' && region.cells.length === 2) {
+      const [c1, c2] = region.cells;
+      if (areCellsAdjacent(c1, c2)) {
+        const neededSum = region.constraint.value!;
+        if (!dominoSums.includes(neededSum)) {
+          warnings.push(`Region ${region.id}: needs sum=${neededSum} for 2 adjacent cells, but no domino has that sum.`);
+        }
+      }
+    }
+  }
+
+  // Check if total sum constraints exceed available pip sum
+  let totalSumConstraints = 0;
+  let sumConstraintRegionCells = 0;
+  for (const region of puzzle.regions) {
+    if (region.constraint.type === 'sum' && region.constraint.value !== undefined) {
+      totalSumConstraints += region.constraint.value;
+      sumConstraintRegionCells += region.cells.length;
+    }
+  }
+
+  // If sum constraints cover all cells, total must match
+  if (sumConstraintRegionCells === puzzle.validCells.length && totalSumConstraints !== totalPipSum) {
+    warnings.push(`Sum constraints total ${totalSumConstraints} but available pips total ${totalPipSum}.`);
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
 // Get pip value at a cell given current placements
 function getPipAtCell(
   cell: Cell,
@@ -245,6 +487,22 @@ export function solvePuzzle(puzzle: PuzzleData): PuzzleSolution {
     dominoes: puzzle.availableDominoes.length,
     regions: puzzle.regions.length,
   });
+
+  // Run comprehensive validation first
+  const validation = validatePuzzle(puzzle);
+
+  if (validation.warnings.length > 0) {
+    console.warn('[Solver] Validation warnings:', validation.warnings);
+  }
+
+  if (!validation.ok) {
+    console.error('[Solver] Validation failed:', validation.errors);
+    return {
+      placements: [],
+      isValid: false,
+      error: validation.errors.join('\n'),
+    };
+  }
 
   // Log valid cells to check island structure
   console.log('[Solver] Valid cells:', puzzle.validCells.map(c => `(${c.row},${c.col})`).join(' '));

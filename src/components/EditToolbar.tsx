@@ -12,6 +12,8 @@ import {
   Pencil,
   Trash2,
   PaintBucket,
+  Undo2,
+  Redo2,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Region, constraintLabel } from '@/lib/types/puzzle';
@@ -31,6 +33,10 @@ interface EditToolbarProps {
   onToggleRemoveCellMode?: () => void;
   isPaintBucketMode?: boolean;
   onTogglePaintBucketMode?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 function ToolButton({
@@ -263,6 +269,10 @@ export function EditToolbar({
   onToggleRemoveCellMode,
   isPaintBucketMode = false,
   onTogglePaintBucketMode,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }: EditToolbarProps) {
   // Get selected region color for paint bucket icon
   const selectedRegion = regions.find(r => r.id === selectedRegionId);
@@ -319,6 +329,22 @@ export function EditToolbar({
 
       {/* Grid tools */}
       <View className="flex-row justify-center gap-2 px-5 mt-3">
+        <ToolButton
+          icon={<Undo2 size={16} color={canUndo ? (isDark ? '#ccc' : '#555') : (isDark ? '#555' : '#bbb')} />}
+          label="Undo"
+          onPress={onUndo ?? (() => {})}
+          isDark={isDark}
+          small
+          isActive={false}
+        />
+        <ToolButton
+          icon={<Redo2 size={16} color={canRedo ? (isDark ? '#ccc' : '#555') : (isDark ? '#555' : '#bbb')} />}
+          label="Redo"
+          onPress={onRedo ?? (() => {})}
+          isDark={isDark}
+          small
+          isActive={false}
+        />
         <ToolButton
           icon={<Grid3X3 size={16} color={isDark ? '#ccc' : '#555'} />}
           label="Grid Size"

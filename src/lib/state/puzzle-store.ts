@@ -15,6 +15,9 @@ import {
 
 export type GridEditMode = 'none' | 'addCell' | 'removeCell' | 'assignRegion' | 'paintBucket';
 
+// Undo/Redo history for edit mode
+const MAX_HISTORY_SIZE = 20;
+
 interface PuzzleStore {
   // Puzzle state
   puzzle: PuzzleData | null;
@@ -34,6 +37,12 @@ interface PuzzleStore {
   // Saved puzzle tracking
   currentSavedPuzzleId: string | null;
   currentSavedPuzzleName: string | null;
+
+  // Undo/Redo history
+  undoStack: PuzzleData[];
+  redoStack: PuzzleData[];
+  canUndo: boolean;
+  canRedo: boolean;
 
   // Actions
   setPuzzle: (puzzle: PuzzleData | null) => void;
@@ -72,6 +81,11 @@ interface PuzzleStore {
   updateGridSize: (width: number, height: number) => void;
   toggleCellInGrid: (cell: Cell) => void;
   floodFillRegion: (startCell: Cell, targetRegionId: string) => void;
+
+  // Undo/Redo actions
+  undo: () => void;
+  redo: () => void;
+  pushToHistory: () => void;
 }
 
 const initialState = {
@@ -91,6 +105,10 @@ const initialState = {
   selectedRegionForAssign: null as string | null,
   currentSavedPuzzleId: null as string | null,
   currentSavedPuzzleName: null as string | null,
+  undoStack: [] as PuzzleData[],
+  redoStack: [] as PuzzleData[],
+  canUndo: false,
+  canRedo: false,
 };
 
 export const usePuzzleStore = create<PuzzleStore>((set, get) => ({
@@ -139,6 +157,73 @@ export const usePuzzleStore = create<PuzzleStore>((set, get) => ({
   reset: () => set(initialState),
 
   clearSolution: () => set({ solution: null, currentPlacements: [], stepIndex: 0 }),
+
+  // Undo/Redo implementation
+  pushToHistory: () => {
+    const { puzzle, undoStack } = get();
+    if (!puzzle) return;
+
+    // Deep clone the puzzle to avoid reference issues
+    const puzzleCopy = JSON.parse(JSON.stringify(puzzle)) as PuzzleData;
+    const newStack = [...undoStack, puzzleCopy].slice(-MAX_HISTORY_SIZE);
+
+    set({
+      undoStack: newStack,
+      redoStack: [], // Clear redo stack on new action
+      canUndo: newStack.length > 0,
+      canRedo: false,
+    });
+  },
+
+  undo: () => {
+    const { puzzle, undoStack, redoStack } = get();
+    if (undoStack.length === 0 || !puzzle) return;
+
+    // Save current state to redo stack
+    const puzzleCopy = JSON.parse(JSON.stringify(puzzle)) as PuzzleData;
+    const newRedoStack = [...redoStack, puzzleCopy].slice(-MAX_HISTORY_SIZE);
+
+    // Pop from undo stack
+    const newUndoStack = [...undoStack];
+    const previousState = newUndoStack.pop();
+
+    if (previousState) {
+      set({
+        puzzle: previousState,
+        undoStack: newUndoStack,
+        redoStack: newRedoStack,
+        canUndo: newUndoStack.length > 0,
+        canRedo: true,
+        solution: null,
+        currentPlacements: [],
+      });
+    }
+  },
+
+  redo: () => {
+    const { puzzle, undoStack, redoStack } = get();
+    if (redoStack.length === 0 || !puzzle) return;
+
+    // Save current state to undo stack
+    const puzzleCopy = JSON.parse(JSON.stringify(puzzle)) as PuzzleData;
+    const newUndoStack = [...undoStack, puzzleCopy].slice(-MAX_HISTORY_SIZE);
+
+    // Pop from redo stack
+    const newRedoStack = [...redoStack];
+    const nextState = newRedoStack.pop();
+
+    if (nextState) {
+      set({
+        puzzle: nextState,
+        undoStack: newUndoStack,
+        redoStack: newRedoStack,
+        canUndo: true,
+        canRedo: newRedoStack.length > 0,
+        solution: null,
+        currentPlacements: [],
+      });
+    }
+  },
 
   updateRegionConstraint: (regionId, constraint) => {
     const { puzzle } = get();

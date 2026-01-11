@@ -83,6 +83,7 @@ export default function HomeScreen() {
   const [isRemoveCellMode, setIsRemoveCellMode] = useState(false);
   const [isPaintBucketMode, setIsPaintBucketMode] = useState(false);
   const [showReferenceImage, setShowReferenceImage] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showSizeHintModal, setShowSizeHintModal] = useState(false);
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
   const [showDualCropper, setShowDualCropper] = useState(false);
@@ -144,6 +145,13 @@ export default function HomeScreen() {
   const floodFillRegion = usePuzzleStore((s) => s.floodFillRegion);
   const setCurrentSavedPuzzle = usePuzzleStore((s) => s.setCurrentSavedPuzzle);
   const setImageUri = usePuzzleStore((s) => s.setImageUri);
+
+  // Undo/Redo
+  const canUndo = usePuzzleStore((s) => s.canUndo);
+  const canRedo = usePuzzleStore((s) => s.canRedo);
+  const undo = usePuzzleStore((s) => s.undo);
+  const redo = usePuzzleStore((s) => s.redo);
+  const pushToHistory = usePuzzleStore((s) => s.pushToHistory);
 
   // Saved puzzles store
   const savePuzzle = useSavedPuzzlesStore((s) => s.savePuzzle);
@@ -429,6 +437,21 @@ export default function HomeScreen() {
     }
   }, [puzzle, setEditMode, setSolution, setError]);
 
+  // Handle clear all with confirmation in edit mode
+  const handleClearAllPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (isEditMode) {
+      setShowClearConfirm(true);
+    } else {
+      reset();
+    }
+  }, [isEditMode, reset]);
+
+  const handleConfirmClear = useCallback(() => {
+    setShowClearConfirm(false);
+    reset();
+  }, [reset]);
+
   // Handle domino press in edit mode
   const handleDominoPress = useCallback(
     (index: number) => {
@@ -449,6 +472,7 @@ export default function HomeScreen() {
   // Handle domino save
   const handleDominoSave = useCallback(
     (pips: [number, number]) => {
+      pushToHistory(); // Save state before edit
       if (isAddingDomino) {
         addDomino(pips);
       } else if (editingDominoIndex !== null) {
@@ -457,17 +481,18 @@ export default function HomeScreen() {
       setShowDominoEditor(false);
       clearSolution();
     },
-    [isAddingDomino, editingDominoIndex, addDomino, updateDomino, clearSolution]
+    [isAddingDomino, editingDominoIndex, addDomino, updateDomino, clearSolution, pushToHistory]
   );
 
   // Handle domino delete
   const handleDominoDelete = useCallback(() => {
+    pushToHistory(); // Save state before edit
     if (editingDominoIndex !== null) {
       removeDomino(editingDominoIndex);
     }
     setShowDominoEditor(false);
     clearSolution();
-  }, [editingDominoIndex, removeDomino, clearSolution]);
+  }, [editingDominoIndex, removeDomino, clearSolution, pushToHistory]);
 
   // Handle region selection for assign mode
   const handleSelectRegion = useCallback(
@@ -497,6 +522,7 @@ export default function HomeScreen() {
   // Handle region save
   const handleRegionSave = useCallback(
     (constraint: RegionConstraint) => {
+      pushToHistory(); // Save state before edit
       if (isAddingRegion) {
         addRegion(constraint);
       } else if (editingRegionId) {
@@ -505,17 +531,18 @@ export default function HomeScreen() {
       setShowRegionEditor(false);
       clearSolution();
     },
-    [isAddingRegion, editingRegionId, addRegion, updateRegionConstraint, clearSolution]
+    [isAddingRegion, editingRegionId, addRegion, updateRegionConstraint, clearSolution, pushToHistory]
   );
 
   // Handle region delete
   const handleRegionDelete = useCallback(() => {
+    pushToHistory(); // Save state before edit
     if (editingRegionId) {
       removeRegion(editingRegionId);
     }
     setShowRegionEditor(false);
     clearSolution();
-  }, [editingRegionId, removeRegion, clearSolution]);
+  }, [editingRegionId, removeRegion, clearSolution, pushToHistory]);
 
   // Handle grid size
   const handleOpenGridSize = useCallback(() => {
@@ -525,10 +552,11 @@ export default function HomeScreen() {
   // Handle grid size save
   const handleGridSizeSave = useCallback(
     (width: number, height: number) => {
+      pushToHistory(); // Save state before edit
       updateGridSize(width, height);
       clearSolution();
     },
-    [updateGridSize, clearSolution]
+    [updateGridSize, clearSolution, pushToHistory]
   );
 
   // Handle toggle grid edit mode - simplified, not used anymore
@@ -553,6 +581,7 @@ export default function HomeScreen() {
   // Handle cell press in edit mode - assign to selected region OR remove if in remove mode
   const handleEditCellPress = useCallback(
     (cell: Cell) => {
+      pushToHistory(); // Save state before edit
       if (isRemoveCellMode) {
         // Remove cell from grid
         removeCell(cell);
@@ -569,13 +598,14 @@ export default function HomeScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     },
-    [isRemoveCellMode, isPaintBucketMode, selectedRegionForAssign, removeCell, floodFillRegion, moveCellToRegion, clearSolution]
+    [isRemoveCellMode, isPaintBucketMode, selectedRegionForAssign, removeCell, floodFillRegion, moveCellToRegion, clearSolution, pushToHistory]
   );
 
   // Handle empty cell press (for adding cells to selected region)
   const handleEmptyCellPress = useCallback(
     (cell: Cell) => {
       if (selectedRegionForAssign) {
+        pushToHistory(); // Save state before edit
         // Add cell and assign to region
         toggleCellInGrid(cell);
         // Small delay to ensure cell exists before assigning region
@@ -586,7 +616,7 @@ export default function HomeScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     },
-    [selectedRegionForAssign, toggleCellInGrid, moveCellToRegion, clearSolution]
+    [selectedRegionForAssign, toggleCellInGrid, moveCellToRegion, clearSolution, pushToHistory]
   );
 
   // Handle region press on grid cell
@@ -881,6 +911,10 @@ export default function HomeScreen() {
                   onToggleRemoveCellMode={handleToggleRemoveCellMode}
                   isPaintBucketMode={isPaintBucketMode}
                   onTogglePaintBucketMode={handleTogglePaintBucketMode}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  onUndo={undo}
+                  onRedo={redo}
                 />
               )}
 
@@ -928,7 +962,7 @@ export default function HomeScreen() {
                 {isEditMode ? (
                   <>
                     <ActionButton
-                      onPress={reset}
+                      onPress={handleClearAllPress}
                       icon={<RotateCcw size={20} color={isDark ? '#fff' : '#333'} />}
                       label="Clear All"
                       variant="secondary"
@@ -1216,6 +1250,102 @@ export default function HomeScreen() {
         islandConfigs={isMultiIslandMode ? islandConfigs : undefined}
         onCompleteMulti={isMultiIslandMode ? handleMultiIslandCropperComplete : undefined}
       />
+
+      {/* Clear All Confirmation Modal */}
+      <Modal
+        visible={showClearConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowClearConfirm(false)}
+      >
+        <Pressable
+          onPress={() => setShowClearConfirm(false)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: isDark ? '#1a1a1a' : '#fff',
+              borderRadius: 20,
+              padding: 24,
+              width: '100%',
+              maxWidth: 340,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: '700',
+                color: isDark ? '#fff' : '#000',
+                textAlign: 'center',
+                marginBottom: 8,
+              }}
+            >
+              Clear All?
+            </Text>
+            <Text
+              style={{
+                fontSize: 14,
+                color: isDark ? '#888' : '#666',
+                textAlign: 'center',
+                marginBottom: 20,
+              }}
+            >
+              This will remove the current puzzle and all edits. This cannot be undone.
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <Pressable
+                onPress={() => setShowClearConfirm(false)}
+                style={{
+                  flex: 1,
+                  backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0',
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: isDark ? '#fff' : '#333',
+                    fontWeight: '600',
+                    fontSize: 16,
+                    textAlign: 'center',
+                  }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleConfirmClear}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#EF4444',
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontWeight: '600',
+                    fontSize: 16,
+                    textAlign: 'center',
+                  }}
+                >
+                  Clear All
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
