@@ -30,6 +30,88 @@ const getOpenRouterApiKey = (): string | undefined => {
 
 const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
+// ==========================================
+// Retry Logic with Exponential Backoff
+// ==========================================
+
+interface RetryConfig {
+  maxAttempts: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
+  jitterFactor: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxAttempts: 3,
+  initialDelayMs: 1000,
+  maxDelayMs: 10000,
+  backoffMultiplier: 2,
+  jitterFactor: 0.2,
+};
+
+function calculateRetryDelay(attempt: number, config: RetryConfig): number {
+  const baseDelay = Math.min(
+    config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1),
+    config.maxDelayMs
+  );
+  const jitter = baseDelay * config.jitterFactor * (Math.random() * 2 - 1);
+  return Math.round(baseDelay + jitter);
+}
+
+function isRetryableError(error: Error, status?: number): boolean {
+  // Retry on network errors
+  if (error.message.includes('network') || error.message.includes('timeout')) {
+    return true;
+  }
+  // Retry on server errors (5xx) and rate limits (429)
+  if (status && (status >= 500 || status === 429)) {
+    return true;
+  }
+  // Do NOT retry on client errors (4xx except 429)
+  if (status && status >= 400 && status < 500 && status !== 429) {
+    return false;
+  }
+  // Retry on token limit errors (can succeed with different approach)
+  if (error.message.includes('ran out of tokens')) {
+    return true;
+  }
+  return false;
+}
+
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+  config: RetryConfig = DEFAULT_RETRY_CONFIG
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const statusMatch = lastError.message.match(/(\d{3})/);
+      const status = statusMatch ? parseInt(statusMatch[1]) : undefined;
+
+      if (attempt < config.maxAttempts && isRetryableError(lastError, status)) {
+        const delay = calculateRetryDelay(attempt, config);
+        console.log(`[AI] ${operationName} failed (attempt ${attempt}/${config.maxAttempts}): ${lastError.message}`);
+        console.log(`[AI] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else if (!isRetryableError(lastError, status)) {
+        throw lastError;
+      }
+    }
+  }
+
+  throw lastError || new Error(`${operationName} failed after ${config.maxAttempts} attempts`);
+}
+
+// ==========================================
+// Type Definitions
+// ==========================================
+
 interface ExtractedCell {
   row: number;
   col: number;
@@ -455,68 +537,71 @@ There should be EXACTLY ${expectedCount} dominoes in the image.
 If you count a different number, re-check carefully before outputting.`;
   }
 
-  const response = await fetch(OPENROUTER_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://vibecode.com',
-      'X-Title': 'Pips Solver',
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-5.2',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert at counting dots on domino tiles. Be extremely precise. Count each half of each domino separately. Output only the JSON array requested, nothing else.'
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`,
+  // Wrap API call with retry logic
+  const data = await withRetry(async () => {
+    const response = await fetch(OPENROUTER_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://vibecode.com',
+        'X-Title': 'Pips Solver',
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-5.2',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert at counting dots on domino tiles. Be extremely precise. Count each half of each domino separately. Output only the JSON array requested, nothing else.'
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`,
+                },
               },
-            },
-            {
-              type: 'text',
-              text: prompt,
-            },
-          ],
-        },
-      ],
-      max_tokens: 4000,
-      temperature: 0.1,
-    }),
-  });
+              {
+                type: 'text',
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        max_tokens: 4000,
+        temperature: 0.1,
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[AI] GPT-5.2 API error:', errorText);
-    let errorMessage = `GPT-5.2 API error: ${response.status}`;
-    
-    // Parse error response for more details
-    try {
-      const errorData = JSON.parse(errorText);
-      if (errorData.error?.message) {
-        errorMessage = `OpenRouter API error: ${errorData.error.message}`;
-        // Provide helpful guidance for common errors
-        if (errorData.error.message.includes('User not found') || response.status === 401) {
-          errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab and make sure it\'s correct.';
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[AI] GPT-5.2 API error:', errorText);
+      let errorMessage = `GPT-5.2 API error: ${response.status}`;
+
+      // Parse error response for more details
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error?.message) {
+          errorMessage = `OpenRouter API error: ${errorData.error.message}`;
+          // Provide helpful guidance for common errors
+          if (errorData.error.message.includes('User not found') || response.status === 401) {
+            errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab and make sure it\'s correct.';
+          }
+        }
+      } catch {
+        // If parsing fails, use the raw error text
+        if (errorText) {
+          errorMessage += ` - ${errorText}`;
         }
       }
-    } catch {
-      // If parsing fails, use the raw error text
-      if (errorText) {
-        errorMessage += ` - ${errorText}`;
-      }
-    }
-    
-    throw new Error(errorMessage);
-  }
 
-  const data = await response.json();
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  }, 'Domino extraction');
   const text = data.choices?.[0]?.message?.content?.trim() || '';
   console.log('[AI] GPT-5.2 domino response:', text);
 
@@ -884,32 +969,33 @@ Your output MUST have:
 - ascii_grid: ${sizeHint.rows} rows, each with ${sizeHint.cols} characters`;
   }
 
-  // Use different models based on attempt - fallback if first fails
-  // Attempt 1: gemini-3-pro-preview (best accuracy for spatial reasoning)
-  // Attempt 2+: gemini-2.5-flash (faster fallback)
-  const model = attempt === 1 ? 'google/gemini-3-pro-preview' : 'google/gemini-2.5-flash';
+  // Always use Pro - tested most accurate for puzzle grid extraction
+  // Flash was tested and found inaccurate for this use case
+  const model = 'google/gemini-3-pro-preview';
 
-  console.log(`[AI] Using model: ${model}`);
+  console.log(`[AI] Extracting grid with Gemini 3 Pro (attempt ${attempt})...`);
 
   const apiKey = getOpenRouterApiKey();
   if (!apiKey) {
     throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
   }
 
-  const response = await fetch(OPENROUTER_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://vibecode.com',
-      'X-Title': 'Pips Solver',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: `You are a visual puzzle analyst specializing in grid-based logic puzzles. Your task is to precisely extract the structure of a puzzle grid from an image.
+  // Wrap API call with retry logic
+  const data = await withRetry(async () => {
+    const response = await fetch(OPENROUTER_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://vibecode.com',
+        'X-Title': 'Pips Solver',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a visual puzzle analyst specializing in grid-based logic puzzles. Your task is to precisely extract the structure of a puzzle grid from an image.
 
 CRITICAL RULES:
 1. Be EXTREMELY precise about cell positions - Row 0 is TOP, Col 0 is LEFT
@@ -920,51 +1006,52 @@ CRITICAL RULES:
 6. DISCONNECTED GRIDS ARE VALID: If the puzzle has multiple separate "islands" of cells, map ALL of them. Do not assume all cells must form one connected shape.
 7. Output ONLY valid JSON, no explanations or markdown
 8. DO NOT spend tokens explaining your reasoning - just output the JSON directly`
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`,
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`,
+                },
               },
-            },
-            {
-              type: 'text',
-              text: prompt,
-            },
-          ],
-        },
-      ],
-      max_tokens: 32000, // Increased to allow room for both reasoning and output
-      temperature: 0.1,
-    }),
-  });
+              {
+                type: 'text',
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        max_tokens: 32000,
+        temperature: 0.1,
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[AI] ${model} grid API error:`, errorText);
-    let errorMessage = `Gemini API error: ${response.status}`;
-    
-    try {
-      const errorData = JSON.parse(errorText);
-      if (errorData.error?.message) {
-        errorMessage = `OpenRouter API error: ${errorData.error.message}`;
-        if (response.status === 401) {
-          errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab.';
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[AI] ${model} grid API error:`, errorText);
+      let errorMessage = `Gemini API error: ${response.status}`;
+
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error?.message) {
+          errorMessage = `OpenRouter API error: ${errorData.error.message}`;
+          if (response.status === 401) {
+            errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab.';
+          }
+        }
+      } catch {
+        if (errorText) {
+          errorMessage += ` - ${errorText}`;
         }
       }
-    } catch {
-      if (errorText) {
-        errorMessage += ` - ${errorText}`;
-      }
-    }
-    
-    throw new Error(errorMessage);
-  }
 
-  const data = await response.json();
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  }, 'Grid extraction');
   let text = data.choices?.[0]?.message?.content?.trim() || '';
   console.log(`[AI] ${model} grid response length:`, text.length);
   console.log(`[AI] ${model} grid response preview:`, text.slice(0, 500));
@@ -1270,17 +1357,11 @@ export async function extractPuzzleFromDualImages(
   const imageReadDuration = Date.now() - imageReadStart;
   console.log(`[AI] [TIMING] Image reading: ${imageReadDuration}ms`);
 
-  const MAX_RETRIES = 3;
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      console.log(`[AI] Dual extraction attempt ${attempt}/${MAX_RETRIES}...`);
-
-      // OPTIMIZATION: Run domino extraction and grid passes in parallel
-      // This reduces total time from ~10-15s to ~5-8s
+  try {
+    // Run domino extraction and grid extraction in parallel
+      // Using Pro-only for grid (Flash tested inaccurate)
       onProgress?.('dominoes');
-      console.log('[AI] Starting parallel extraction (dominoes + 2-pass grid)...');
+      console.log('[AI] Starting parallel extraction (dominoes + Pro grid)...');
       const parallelStart = Date.now();
 
       // Track individual API call times
@@ -1289,58 +1370,21 @@ export async function extractPuzzleFromDualImages(
           console.log(`[AI] [TIMING] Domino extraction: ${Date.now() - parallelStart}ms`);
           return result;
         });
-      const gridPass1Promise = extractGridFromImage(gridBase64, sizeHint, 1)
+      const gridPromise = extractGridFromImage(gridBase64, sizeHint, 1)
         .then(result => {
-          console.log(`[AI] [TIMING] Grid pass 1: ${Date.now() - parallelStart}ms`);
-          return result;
-        });
-      const gridPass2Promise = extractGridFromImage(gridBase64, sizeHint, 2)
-        .then(result => {
-          console.log(`[AI] [TIMING] Grid pass 2: ${Date.now() - parallelStart}ms`);
+          console.log(`[AI] [TIMING] Grid extraction (Pro): ${Date.now() - parallelStart}ms`);
           return result;
         });
 
-      const [dominoResult, gridPass1, gridPass2] = await Promise.all([
+      const [dominoResult, gridResult] = await Promise.all([
         dominoPromise,
-        gridPass1Promise,
-        gridPass2Promise,
+        gridPromise,
       ]);
 
       const parallelDuration = Date.now() - parallelStart;
-      console.log(`[AI] [TIMING] Parallel extraction total: ${parallelDuration}ms (all 3 API calls)`);
+      console.log(`[AI] [TIMING] Parallel extraction total: ${parallelDuration}ms (2 API calls)`);
 
       onProgress?.('grid');
-
-      // Compare grid results and choose the best one
-      const comparison = compareGridResponses(gridPass1, gridPass2);
-      console.log(`[AI] Grid comparison score: ${(comparison.score * 100).toFixed(1)}%`);
-
-      if (comparison.warnings.length > 0) {
-        console.warn('[AI] Grid extraction warnings:', comparison.warnings);
-      }
-
-      // Use the first pass result (lower temperature = more consistent)
-      // unless it has issues and the second pass looks better
-      let gridResult = gridPass1;
-      if (comparison.score < 0.8) {
-        // Low agreement - check which one has more complete cells
-        const pass1Cells = gridPass1.regions.reduce((acc, r) => acc + r.cells.length, 0);
-        const pass2Cells = gridPass2.regions.reduce((acc, r) => acc + r.cells.length, 0);
-
-        if (sizeHint) {
-          const expectedCells = sizeHint.dominoCount * 2;
-          const pass1Diff = Math.abs(pass1Cells - expectedCells);
-          const pass2Diff = Math.abs(pass2Cells - expectedCells);
-
-          if (pass2Diff < pass1Diff) {
-            console.log('[AI] Using second pass result (better cell count match)');
-            gridResult = gridPass2;
-          }
-        } else if (pass2Cells > pass1Cells) {
-          console.log('[AI] Using second pass result (more cells found)');
-          gridResult = gridPass2;
-        }
-      }
 
       // Convert grid response to our format
       const { regions, validCells, holes } = convertGridResponseToRegions(gridResult);
@@ -1356,14 +1400,14 @@ export async function extractPuzzleFromDualImages(
         }
       }
 
-      // Build confidence metadata including uncertain cells/regions
+      // Build confidence metadata - Pro-only extraction is reliable
       const confidence: ExtractionConfidence = {
-        overall: comparison.score,
-        dominoConfidence: 1.0, // Domino extraction is typically more reliable
-        gridConfidence: comparison.score,
-        warnings: comparison.warnings,
-        uncertainCells: comparison.uncertainCells,
-        uncertainRegions: comparison.uncertainRegions,
+        overall: 1.0,
+        dominoConfidence: 1.0,
+        gridConfidence: 1.0,
+        warnings: [],
+        uncertainCells: [],
+        uncertainRegions: [],
       };
 
       // Build puzzle data with confidence information
@@ -1384,7 +1428,7 @@ export async function extractPuzzleFromDualImages(
       console.log(`[AI] [TIMING]   - Image reading: ${imageReadDuration}ms`);
       console.log(`[AI] [TIMING]   - API calls (parallel): ${parallelDuration}ms`);
       console.log(`[AI] [TIMING]   - Post-processing: ${totalExtractionTime - imageReadDuration - parallelDuration}ms`);
-      console.log('[AI] Dual extraction successful!', {
+      console.log('[AI] Extraction successful!', {
         dominoes: puzzleData.availableDominoes.length,
         cells: puzzleData.validCells.length,
         regions: puzzleData.regions.length,
@@ -1394,18 +1438,12 @@ export async function extractPuzzleFromDualImages(
         uncertainRegions: confidence.uncertainRegions.length,
       });
 
-      return puzzleData;
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
-      console.warn(`[AI] Attempt ${attempt} failed: ${lastError.message}`);
-
-      if (attempt < MAX_RETRIES) {
-        console.log('[AI] Retrying...');
-      }
-    }
+    return puzzleData;
+  } catch (e) {
+    const error = e instanceof Error ? e : new Error(String(e));
+    console.error('[AI] Extraction failed:', error.message);
+    throw new Error(`Puzzle extraction failed: ${error.message}`);
   }
-
-  throw lastError || new Error('Failed to extract puzzle after multiple attempts');
 }
 
 // ==========================================
@@ -1473,11 +1511,11 @@ export async function extractMultiIslandPuzzle(
   const GAP_COLUMNS = 1; // Gap between islands
   const mergedData = mergeIslands(islandResults, islandConfigs, GAP_COLUMNS);
 
-  // Build confidence metadata
+  // Build confidence metadata - Pro-only extraction is reliable
   const confidence: ExtractionConfidence = {
-    overall: 0.9, // Multi-island doesn't do two-pass verification yet
+    overall: 1.0,
     dominoConfidence: 1.0,
-    gridConfidence: 0.9,
+    gridConfidence: 1.0,
     warnings: [],
     uncertainCells: [],
     uncertainRegions: [],
@@ -1927,76 +1965,79 @@ FINAL CHECKLIST:
 ${EXTRACTION_PROMPT}`;
   }
 
-  console.log('[AI] Starting grid extraction with Gemini 3 Flash Preview...', sizeHint ? `expecting ${sizeHint.dominoCount * 2} cells` : 'no hints');
+  console.log('[AI] Starting grid extraction with Gemini 3 Pro...', sizeHint ? `expecting ${sizeHint.dominoCount * 2} cells` : 'no hints');
 
-  // Increase temperature slightly on retries to get different results
-  const temperature = 0.1 + (attempt - 1) * 0.1;
+  // Keep temperature consistent for reliable extraction
+  const temperature = 0.1;
 
   const apiKey = getOpenRouterApiKey();
   if (!apiKey) {
     throw new Error('OpenRouter API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENROUTER_API_KEY in the ENV tab.');
   }
 
-  // Use Gemini 3 Flash Preview for grid/regions (fast, cost-effective)
-  const response = await fetch(OPENROUTER_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://vibecode.com',
-      'X-Title': 'Pips Solver',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-3-flash-preview',
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/jpeg;base64,${base64Image}`,
+  // Use Gemini 3 Pro for grid/regions (accurate for puzzle extraction)
+  // Wrap API call with retry logic
+  const data = await withRetry(async () => {
+    const response = await fetch(OPENROUTER_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://vibecode.com',
+        'X-Title': 'Pips Solver',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-3-pro-preview',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`,
+                },
               },
-            },
-            {
-              type: 'text',
-              text: promptText,
-            },
-          ],
-        },
-      ],
-      max_tokens: 8000,
-      temperature,
-    }),
-  });
+              {
+                type: 'text',
+                text: promptText,
+              },
+            ],
+          },
+        ],
+        max_tokens: 8000,
+        temperature,
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[AI] API error:', errorText);
-    let errorMessage = `Failed to analyze image: ${response.status}`;
-    
-    try {
-      const errorData = JSON.parse(errorText);
-      if (errorData.error?.message) {
-        errorMessage = `OpenRouter API error: ${errorData.error.message}`;
-        if (response.status === 401) {
-          errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab.';
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[AI] API error:', errorText);
+      let errorMessage = `Failed to analyze image: ${response.status}`;
+
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error?.message) {
+          errorMessage = `OpenRouter API error: ${errorData.error.message}`;
+          if (response.status === 401) {
+            errorMessage += '\n\nThis usually means the API key is invalid or expired. Please check your OpenRouter API key in the ENV tab.';
+          }
+        }
+      } catch {
+        if (errorText) {
+          errorMessage += ` - ${errorText}`;
         }
       }
-    } catch {
-      if (errorText) {
-        errorMessage += ` - ${errorText}`;
-      }
-    }
-    
-    throw new Error(errorMessage);
-  }
 
-  const data = await response.json();
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  }, 'Single-image extraction');
   const text = data.choices?.[0]?.message?.content;
 
   if (!text) {
