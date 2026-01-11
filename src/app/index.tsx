@@ -23,7 +23,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useMutation } from '@tanstack/react-query';
 import {
-  Camera,
   Image as ImageIcon,
   Play,
   RotateCcw,
@@ -41,7 +40,7 @@ import {
 
 import { useColorScheme } from '@/lib/useColorScheme';
 import { usePuzzleStore, GridEditMode } from '@/lib/state/puzzle-store';
-import { extractPuzzleFromImage, extractPuzzleFromDualImages, createSamplePuzzle, createLShapedPuzzle, GridSizeHint, ExtractionConfidence } from '@/lib/services/gemini';
+import { extractPuzzleFromImage, extractPuzzleFromDualImages, createSamplePuzzle, GridSizeHint, ExtractionConfidence } from '@/lib/services/gemini';
 import { solvePuzzle, getHintForCell, verifyPartialSolution } from '@/lib/services/solver';
 import { PuzzleGrid } from '@/components/PuzzleGrid';
 import { DominoTray } from '@/components/DominoTray';
@@ -350,20 +349,6 @@ export default function HomeScreen() {
     setPendingImageUri(null);
     setPendingSizeHint(null);
   }, []);
-
-  // Use L-shaped puzzle for testing
-  const handleUseLShapedPuzzle = useCallback(() => {
-    setLoading(false); // Clear any loading state
-    setError(null);
-    const lPuzzle = createLShapedPuzzle();
-    setPuzzle(lPuzzle);
-    setCurrentSavedPuzzle(null, null);
-    const sol = solvePuzzle(lPuzzle);
-    setSolution(sol);
-    if (!sol.isValid) {
-      setError(sol.error || 'Could not solve puzzle');
-    }
-  }, [setPuzzle, setSolution, setError, setCurrentSavedPuzzle, setLoading]);
 
   // Use sample puzzle for demo
   const handleUseSample = useCallback(() => {
@@ -872,7 +857,7 @@ export default function HomeScreen() {
                 <View
                   className={`w-20 h-20 rounded-full items-center justify-center mb-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`}
                 >
-                  <Camera size={36} color={isDark ? '#888' : '#666'} />
+                  <ImageIcon size={36} color={isDark ? '#888' : '#666'} />
                 </View>
                 <Text
                   className={`text-lg font-semibold text-center mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}
@@ -882,27 +867,17 @@ export default function HomeScreen() {
                 <Text
                   className={`text-sm text-center ${isDark ? 'text-gray-500' : 'text-gray-600'}`}
                 >
-                  Take a photo or upload a screenshot of a NYT Pips puzzle to get
-                  started
+                  Upload a screenshot of a NYT Pips puzzle to get started
                 </Text>
               </View>
 
-              {/* Action Buttons */}
-              <View className="flex-row gap-3 mt-6">
-                <ActionButton
-                  onPress={() => router.push('/camera')}
-                  icon={<Camera size={20} color="#fff" />}
-                  label="Camera"
-                  variant="primary"
-                  isDark={isDark}
-                />
+              {/* Action Button */}
+              <View className="mt-6">
                 <ActionButton
                   onPress={handlePickImage}
-                  icon={
-                    <ImageIcon size={20} color={isDark ? '#fff' : '#333'} />
-                  }
-                  label="Upload"
-                  variant="secondary"
+                  icon={<ImageIcon size={20} color="#fff" />}
+                  label="Upload Screenshot"
+                  variant="primary"
                   isDark={isDark}
                 />
               </View>
@@ -914,16 +889,6 @@ export default function HomeScreen() {
               >
                 <Text className="text-blue-500 font-medium">
                   Try with sample puzzle
-                </Text>
-              </Pressable>
-
-              {/* L-Shaped Puzzle Button */}
-              <Pressable
-                onPress={handleUseLShapedPuzzle}
-                className="mt-2 py-3 items-center"
-              >
-                <Text className="text-green-500 font-medium">
-                  Try L-shaped puzzle (from screenshot)
                 </Text>
               </Pressable>
             </Animated.View>
