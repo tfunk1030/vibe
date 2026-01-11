@@ -60,22 +60,42 @@ function calculateRetryDelay(attempt: number, config: RetryConfig): number {
 }
 
 function isRetryableError(error: Error, status?: number): boolean {
-  // Retry on network errors
-  if (error.message.includes('network') || error.message.includes('timeout')) {
+  const msg = error.message.toLowerCase();
+
+  // Retry on network errors (comprehensive patterns)
+  const networkErrors = [
+    'network', 'timeout', 'econnreset', 'etimedout',
+    'fetch failed', 'socket hang up', 'enotfound', 'econnrefused'
+  ];
+  if (networkErrors.some(pattern => msg.includes(pattern))) {
     return true;
   }
+
   // Retry on server errors (5xx) and rate limits (429)
   if (status && (status >= 500 || status === 429)) {
     return true;
   }
+
   // Do NOT retry on client errors (4xx except 429)
   if (status && status >= 400 && status < 500 && status !== 429) {
     return false;
   }
-  // Retry on token limit errors (can succeed with different approach)
-  if (error.message.includes('ran out of tokens')) {
+
+  // Retry on token limit errors
+  if (msg.includes('ran out of tokens')) {
     return true;
   }
+
+  // Retry on empty responses (AI didn't return content)
+  if (msg.includes('empty response') || msg.includes('no response')) {
+    return true;
+  }
+
+  // Retry on validation failures (wrong cell/domino count)
+  if (msg.includes('count mismatch')) {
+    return true;
+  }
+
   return false;
 }
 
@@ -91,7 +111,8 @@ async function withRetry<T>(
       return await operation();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      const statusMatch = lastError.message.match(/(\d{3})/);
+      // Extract HTTP status code more precisely (e.g., "error: 500", "status 429")
+      const statusMatch = lastError.message.match(/(?:error|status)[:\s]+(\d{3})/i);
       const status = statusMatch ? parseInt(statusMatch[1]) : undefined;
 
       if (attempt < config.maxAttempts && isRetryableError(lastError, status)) {

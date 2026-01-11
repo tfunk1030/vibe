@@ -30,7 +30,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files - NEVER commit API keys
+.env
+.env.*
 .env*.local
 
 # typescript
@@ -45,3 +47,7 @@ expo.log
 
 # Auto Claude data directory
 .auto-claude/
+
+# Claude Code cache and local settings
+.claude/cache/
+.claude/settings.local.json
