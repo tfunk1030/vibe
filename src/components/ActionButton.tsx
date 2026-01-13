@@ -5,6 +5,7 @@ import Animated, {
   withSpring,
   useSharedValue,
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 
 interface ActionButtonProps {
   onPress: () => void;
@@ -31,6 +32,9 @@ export function ActionButton({
 
   const handlePressIn = () => {
     scale.value = withSpring(0.95);
+    if (!disabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
   };
 
   const handlePressOut = () => {
