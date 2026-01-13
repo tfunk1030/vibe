@@ -2,14 +2,7 @@
   "mcpServers": {
     "spawner": {
       "command": "cmd",
-      "args": [
-        "/c",
-        "npx",
-        "-y",
-        "mcp-remote",
-        "https://mcp.vibeship.co"
-      ],
-      "description": "Spawner V2 - Project memory, validation, skills, sharp edges"
+      "args": ["/c", "mcp-remote", "https://mcp.vibeship.co"]
     }
   }
 }
