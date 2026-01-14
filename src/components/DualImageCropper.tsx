@@ -172,7 +172,11 @@ function CropBox({
       />
 
       <GestureDetector gesture={moveGesture}>
-        <Animated.View style={boxStyle}>
+        <Animated.View
+          style={boxStyle}
+          accessibilityLabel="Crop area"
+          accessibilityHint="Drag to move the crop area. Drag the corner handle to resize."
+        >
           {/* Clear area inside crop box */}
           <View
             style={{

@@ -61,6 +61,8 @@ export function SavePuzzleModal({
         className="flex-1 items-center justify-center"
         style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
         onPress={onClose}
+        accessibilityLabel="Close dialog"
+        accessibilityHint="Tap outside the dialog to close"
       >
         <Animated.View entering={FadeIn.duration(200)}>
           <Pressable
@@ -109,6 +111,8 @@ export function SavePuzzleModal({
                   borderRadius: 8,
                   backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
                 }}
+                accessibilityLabel="Close save dialog"
+                accessibilityRole="button"
               >
                 <X size={20} color={isDark ? '#888' : '#666'} />
               </Pressable>

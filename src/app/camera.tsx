@@ -27,10 +27,12 @@ function IconButton({
   onPress,
   icon,
   size = 50,
+  accessibilityLabel,
 }: {
   onPress: () => void;
   icon: React.ReactNode;
   size?: number;
+  accessibilityLabel?: string;
 }) {
   const scale = useSharedValue(1);
 
@@ -60,6 +62,8 @@ function IconButton({
           alignItems: 'center',
           justifyContent: 'center',
         }}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="button"
       >
         {icon}
       </Pressable>
@@ -199,6 +203,7 @@ export default function CameraScreen() {
             <IconButton
               onPress={() => router.back()}
               icon={<X size={24} color="#fff" />}
+              accessibilityLabel="Close camera"
             />
             <Text style={styles.title}>Capture Puzzle</Text>
             <IconButton
@@ -210,6 +215,7 @@ export default function CameraScreen() {
                   <ZapOff size={24} color="#fff" />
                 )
               }
+              accessibilityLabel={flash ? "Turn flash off" : "Turn flash on"}
             />
           </Animated.View>
 
@@ -231,6 +237,7 @@ export default function CameraScreen() {
             <IconButton
               onPress={toggleFacing}
               icon={<RotateCcw size={24} color="#fff" />}
+              accessibilityLabel="Switch camera"
             />
             <Pressable
               onPress={handleCapture}
@@ -239,6 +246,9 @@ export default function CameraScreen() {
                 styles.captureButton,
                 isPending && styles.captureButtonDisabled,
               ]}
+              accessibilityLabel={isPending ? "Processing photo" : "Take photo"}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isPending }}
             >
               <View style={styles.captureButtonInner}>
                 {isPending ? (

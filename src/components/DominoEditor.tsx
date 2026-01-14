@@ -124,6 +124,9 @@ function PipSelector({
               borderWidth: isSelected ? 0 : 1,
               borderColor: isDark ? '#444' : '#ddd',
             }}
+            accessibilityLabel={`${pip} pips`}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: isSelected }}
           >
             <PipDots
               count={pip}
@@ -181,6 +184,8 @@ export function DominoEditor({
           backgroundColor: 'rgba(0,0,0,0.5)',
           justifyContent: 'flex-end',
         }}
+        accessibilityLabel="Close dialog"
+        accessibilityHint="Tap outside the dialog to close"
       >
         <Animated.View
           entering={SlideInDown.springify().damping(20)}
@@ -218,7 +223,12 @@ export function DominoEditor({
                 >
                   {isNew ? 'Add Domino' : 'Edit Domino'}
                 </Text>
-                <Pressable onPress={onClose} className="p-2">
+                <Pressable
+                  onPress={onClose}
+                  className="p-2"
+                  accessibilityLabel="Close domino editor"
+                  accessibilityRole="button"
+                >
                   <X size={24} color={isDark ? '#888' : '#666'} />
                 </Pressable>
               </View>

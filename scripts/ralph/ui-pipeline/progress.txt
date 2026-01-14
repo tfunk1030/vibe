@@ -1,0 +1,57 @@
+# UI Pipeline Progress Log - Vibe (Pips Solver)
+Started: 2026-01-13
+
+## Codebase Patterns
+
+### Vibe Design System
+- Dark theme with vibrant puzzle accents
+- NativeWind (Tailwind CSS) for styling
+- Reanimated for animations
+- Gesture Handler for touch interactions
+- Lucide icons
+
+### Key Files Reference
+- Theme: `src/lib/theme.ts`
+- Typography: `src/lib/fonts.ts`
+- Animations: `src/lib/animations.ts`
+- Haptics: `src/lib/haptics.ts`
+- Utility: `src/lib/cn.ts` (className merge)
+
+### Typecheck Command
+```bash
+npx tsc --noEmit
+```
+
+### Component Structure
+- Screens: `src/app/*.tsx`
+- Components: `src/components/*.tsx`
+- UI primitives: `src/components/ui/*.tsx`
+- Libraries: `src/lib/*.ts`
+
+### NativeWind/Tailwind Patterns
+- Use `className` prop, never inline `style={{}}` for static styles
+- Reanimated styles can use `style` prop for animated values
+- Theme colors: `bg-primary`, `text-foreground`, etc.
+- Spacing: `p-2`, `p-4`, `m-2`, `gap-4`, etc.
+- Use `cn()` utility to merge classNames conditionally
+
+### Puzzle App Specifics
+- Grid cells need precise touch targets
+- Domino pieces need clear pip visibility
+- Camera overlay needs framing guides
+- Solution states need celebratory feedback
+- Saved puzzles need thumbnail previews
+
+### React Native Patterns
+- Use useCallback for gesture handlers
+- Memoize expensive grid calculations
+- Use FlatList for domino tray (virtualization)
+- Haptic feedback on puzzle interactions
+
+---
+
+## Iteration Log
+
+(Entries will be appended here after each iteration)
+
+---

@@ -67,6 +67,8 @@ export function EmptyPuzzleState({
       <Pressable
         onPress={onSample}
         className="mt-6 py-3 items-center"
+        accessibilityLabel="Try with sample puzzle"
+        accessibilityRole="link"
       >
         <Text className="text-blue-500 font-medium">
           Try with sample puzzle
@@ -77,6 +79,8 @@ export function EmptyPuzzleState({
       <Pressable
         onPress={onLShapedPuzzle}
         className="mt-2 py-3 items-center"
+        accessibilityLabel="Try L-shaped puzzle from screenshot"
+        accessibilityRole="link"
       >
         <Text className="text-green-500 font-medium">
           Try L-shaped puzzle (from screenshot)

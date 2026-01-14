@@ -792,6 +792,8 @@ export default function HomeScreen() {
                       backgroundColor: isDark ? '#2a2a2a' : '#e5e5e5',
                       marginRight: 12,
                     }}
+                    accessibilityLabel="Return to home screen"
+                    accessibilityRole="button"
                   >
                     <Home size={22} color={isDark ? '#fff' : '#666'} />
                   </Pressable>
@@ -799,6 +801,7 @@ export default function HomeScreen() {
                 <View className="flex-1">
                   <Text
                     className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}
+                    accessibilityRole="header"
                   >
                     Pips Solver
                   </Text>
@@ -823,6 +826,8 @@ export default function HomeScreen() {
                     borderRadius: 12,
                     backgroundColor: isDark ? '#2a2a2a' : '#e5e5e5',
                   }}
+                  accessibilityLabel="Open saved puzzles"
+                  accessibilityRole="button"
                 >
                   <FolderOpen size={24} color={isDark ? '#fff' : '#666'} />
                 </Pressable>
@@ -835,6 +840,8 @@ export default function HomeScreen() {
                       borderRadius: 12,
                       backgroundColor: currentSavedPuzzleId ? '#22C55E' : '#3B82F6',
                     }}
+                    accessibilityLabel={currentSavedPuzzleId ? "Update saved puzzle" : "Save puzzle"}
+                    accessibilityRole="button"
                   >
                     <Save size={24} color="#fff" />
                   </Pressable>
@@ -848,6 +855,8 @@ export default function HomeScreen() {
                       borderRadius: 12,
                       backgroundColor: isEditMode ? '#F59E0B' : isDark ? '#2a2a2a' : '#e5e5e5',
                     }}
+                    accessibilityLabel={isEditMode ? "Finish editing" : "Edit puzzle"}
+                    accessibilityRole="button"
                   >
                     {isEditMode ? (
                       <Check size={24} color="#fff" />

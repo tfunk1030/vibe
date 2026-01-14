@@ -170,10 +170,16 @@ function NumberStepper({
             justifyContent: 'center',
             opacity: value <= min ? 0.5 : 1,
           }}
+          accessibilityLabel={`Decrease ${label} from ${value}`}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: value <= min }}
         >
           <Minus size={20} color={isDark ? '#fff' : '#333'} />
         </Pressable>
-        <Text style={{ fontSize: 22, fontWeight: '700', color: isDark ? '#fff' : '#333', minWidth: 40, textAlign: 'center' }}>
+        <Text
+          style={{ fontSize: 22, fontWeight: '700', color: isDark ? '#fff' : '#333', minWidth: 40, textAlign: 'center' }}
+          accessibilityLabel={`${label}: ${value}`}
+        >
           {value}
         </Text>
         <Pressable
@@ -188,6 +194,9 @@ function NumberStepper({
             justifyContent: 'center',
             opacity: value >= max ? 0.5 : 1,
           }}
+          accessibilityLabel={`Increase ${label} from ${value}`}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: value >= max }}
         >
           <Plus size={20} color={isDark ? '#fff' : '#333'} />
         </Pressable>

@@ -1,45 +1,54 @@
 # Ralph Progress Log
-Started: 2026-01-06
+Started: 2026-01-13
 
 ## Codebase Patterns
-- **Styling**: Use `useRedesignTheme()` for colors/tokens - never hardcode colors
-- **Haptics**: Import from `expo-haptics`, use `Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light/Medium)`
-- **Animations**: Use `react-native-reanimated` - FadeIn, FadeInDown for enter animations
-- **Components**: Wrap with `memo()` for performance, use React.FC<Props> typing
-- **Accessibility**: ALL interactive elements need `accessibilityLabel` and `accessibilityRole`
-- **Imports**: Use `@/src/...` alias paths
-- **File naming**: kebab-case for files (e.g., `add-club-modal.tsx`)
-- **Typecheck**: Run `npx tsc --noEmit` to verify
-- **Club context**: `useClubSettings()` from `@/src/features/settings/context/clubs`
-- **Theme context**: `useRedesignTheme()` from `@/src/theme/redesign`
-- **Settings context**: `useSettings()` from `@/src/core/context/settings`
+- **Styling**: Use NativeWind with Tailwind classes - `className="flex-1 bg-white"`
+- **Conditional styles**: Use `cn()` from `src/lib/cn.ts` for merging classNames
+- **NO className on**: CameraView, LinearGradient, Animated components - use inline `style` prop
+- **Haptics**: Import from `expo-haptics`, use `Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)`
+- **Animations**: Use `react-native-reanimated` v4 - FadeIn, FadeInDown for enter animations
+- **Gestures**: Use `react-native-gesture-handler` - GestureDetector with Gesture API
+- **State**: React Query for server state `useQuery({ queryKey, queryFn })`, Zustand for local
+- **Icons**: Use `lucide-react-native` - e.g., `import { Home } from 'lucide-react-native'`
+- **Typecheck**: Run `bunx tsc --noEmit` to verify
+- **Pressable over TouchableOpacity**: Always prefer Pressable
+- **Custom modals**: Don't use Alert.alert() - build custom modal components
+- **Safe area**: Import from `react-native-safe-area-context`, not react-native
 
 ## Key Files
-- `src/features/redesign/screens/` - PlayScreen, StatsScreen, SetupScreen
-- `src/components/redesign/` - ResultCard, QuickAction, MetricPill
-- `src/theme/redesign/` - Theme provider and tokens
-- `src/features/settings/context/clubs.tsx` - Club bag management
+- `src/app/` - Expo Router file-based routes
+- `src/app/_layout.tsx` - Root layout (never delete RootLayoutNav)
+- `src/components/` - Reusable UI components
+- `src/lib/cn.ts` - className merge utility
 - `CLAUDE.md` - Project conventions and rules
 
 ## Component Template
 ```tsx
-import React, { memo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { useRedesignTheme } from '@/src/theme/redesign';
+import { View, Text, Pressable } from 'react-native';
+import { cn } from '@/src/lib/cn';
 
 interface Props {
   // typed props here
 }
 
-export const ComponentName = memo(function ComponentName({ ...props }: Props) {
-  const { colors, tokens } = useRedesignTheme();
-  
+export function ComponentName({ ...props }: Props) {
   return (
-    <View accessibilityRole="..." accessibilityLabel="...">
+    <View className="flex-1">
       {/* content */}
     </View>
   );
-});
+}
 ```
 
+---
+
+## 2026-01-13 - US-001
+- Added haptic feedback to ActionButton component
+- Files changed: src/components/ActionButton.tsx
+- **Learnings:**
+  - ActionButton already had scale animation on press using react-native-reanimated
+  - Added `Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)` in handlePressIn
+  - Only trigger haptics when button is not disabled (check `!disabled`)
+  - The main index.tsx already uses haptics extensively - good pattern to follow
+  - Use `npx tsc --noEmit` on Windows when `bunx` not available in shell
 ---

@@ -157,6 +157,9 @@ function DominoTile({
           onPress={handlePress}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          accessibilityLabel={`Domino ${domino.pips[0]}-${domino.pips[1]}${isUsed ? ', already placed' : ''}`}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isUsed }}
         >
           {content}
         </Pressable>
@@ -217,6 +220,8 @@ function AddDominoButton({
           width: size * 2 + 18,
           height: size + 8,
         }}
+        accessibilityLabel="Add new domino"
+        accessibilityRole="button"
       >
         <Plus size={24} color="#4CAF50" />
       </Pressable>

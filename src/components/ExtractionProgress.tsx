@@ -86,7 +86,12 @@ export function ExtractionProgress({ stage, isDark }: ExtractionProgressProps) {
       )}
 
       {/* Progress Bar */}
-      <View className="w-full max-w-xs mt-2">
+      <View
+        className="w-full max-w-xs mt-2"
+        accessibilityRole="progressbar"
+        accessibilityValue={{ min: 0, max: 100, now: stageInfo.progress }}
+        accessibilityLabel={`Extraction progress: ${stageInfo.text}`}
+      >
         <View
           className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}
         >

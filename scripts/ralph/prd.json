@@ -1,153 +1,17 @@
 {
-  "branchName": "ralph/redesign-improvements",
+  "branchName": "ralph/improvements",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add haptic feedback to PlayScreen distance buttons",
+      "title": "Example: Add haptic feedback to buttons",
       "acceptanceCriteria": [
-        "DistanceInput +10/-10 buttons already have haptics but verify they work",
-        "Add haptic feedback to the calculate/refresh action if missing",
-        "Ensure Haptics.impactAsync is imported from expo-haptics",
+        "Import expo-haptics",
+        "Add Haptics.impactAsync on button press",
         "typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": "Quick win - verify existing haptics and add any missing ones"
-    },
-    {
-      "id": "US-002",
-      "title": "Create AddClubModal component",
-      "acceptanceCriteria": [
-        "Create src/components/redesign/AddClubModal.tsx",
-        "Modal accepts isVisible and onClose props",
-        "Form fields: club name (text), normal yardage (number), loft (optional number)",
-        "Submit button calls onSave prop with ClubData",
-        "Cancel button closes modal",
-        "Uses useRedesignTheme for styling",
-        "All interactive elements have accessibilityLabel",
-        "typecheck passes"
-      ],
-      "priority": 2,
-      "passes": false,
-      "notes": "SetupScreen has Alert placeholders for Add Club - replace with real modal"
-    },
-    {
-      "id": "US-003",
-      "title": "Wire AddClubModal into SetupScreen",
-      "acceptanceCriteria": [
-        "Import AddClubModal in SetupScreen",
-        "Add isAddClubVisible state",
-        "Replace Alert.alert in 'Add Club' onAction with setIsAddClubVisible(true)",
-        "Render AddClubModal at bottom of SetupScreen",
-        "onSave calls addClub from useClubSettings and closes modal",
-        "typecheck passes"
-      ],
-      "priority": 3,
-      "passes": false,
-      "notes": "Depends on US-002"
-    },
-    {
-      "id": "US-004",
-      "title": "Add wind direction arrow indicator to PlayScreen",
-      "acceptanceCriteria": [
-        "Create src/components/redesign/WindArrow.tsx",
-        "Component accepts degrees prop (0-360)",
-        "Renders an arrow icon rotated to show wind direction",
-        "Uses Animated rotation with reanimated",
-        "Size prop with default 24",
-        "Color prop with default from theme",
-        "typecheck passes"
-      ],
-      "priority": 4,
-      "passes": false,
-      "notes": "Visual enhancement for wind display"
-    },
-    {
-      "id": "US-005",
-      "title": "Add WindArrow to ConditionsBar",
-      "acceptanceCriteria": [
-        "Import WindArrow in PlayScreen",
-        "Replace or augment Wind icon in wind MetricPill with WindArrow",
-        "Pass environmental.current.windDirection to WindArrow",
-        "Arrow visually indicates direction wind is coming FROM",
-        "typecheck passes"
-      ],
-      "priority": 5,
-      "passes": false,
-      "notes": "Depends on US-004"
-    },
-    {
-      "id": "US-006",
-      "title": "Create EditClubModal component",
-      "acceptanceCriteria": [
-        "Create src/components/redesign/EditClubModal.tsx",
-        "Similar to AddClubModal but pre-populates with existing club data",
-        "Props: isVisible, onClose, onSave, club (ClubData), index (number)",
-        "Form pre-fills with club.name, club.normalYardage, club.loft",
-        "Save button updates existing club",
-        "Uses useRedesignTheme for styling",
-        "typecheck passes"
-      ],
-      "priority": 6,
-      "passes": false,
-      "notes": "For editing existing clubs in bag"
-    },
-    {
-      "id": "US-007",
-      "title": "Wire EditClubModal into SetupScreen",
-      "acceptanceCriteria": [
-        "Import EditClubModal in SetupScreen",
-        "Add editingClub state: { club: ClubData, index: number } | null",
-        "ClubRow onEdit sets editingClub state",
-        "Render EditClubModal with editingClub data",
-        "onSave calls updateClub from useClubSettings",
-        "onClose clears editingClub state",
-        "typecheck passes"
-      ],
-      "priority": 7,
-      "passes": false,
-      "notes": "Depends on US-006. May need to add updateClub to useClubSettings if missing"
-    },
-    {
-      "id": "US-008",
-      "title": "Add loading state to PlayScreen environmental data",
-      "acceptanceCriteria": [
-        "Check if environmental data has loading state",
-        "If environmental.loading is true, show skeleton/placeholder for ConditionsBar",
-        "Create simple ConditionsBarSkeleton component inline or separate",
-        "Skeleton uses pulsing animation with reanimated",
-        "typecheck passes"
-      ],
-      "priority": 8,
-      "passes": false,
-      "notes": "Improve UX when weather data is fetching"
-    },
-    {
-      "id": "US-009",
-      "title": "Add pull-to-refresh feedback text",
-      "acceptanceCriteria": [
-        "When isRefreshing is true on PlayScreen, show subtle 'Updating conditions...' text",
-        "Text appears near top of scroll content",
-        "Fades in/out with animation",
-        "Uses textMuted color from theme",
-        "typecheck passes"
-      ],
-      "priority": 9,
-      "passes": false,
-      "notes": "Better feedback during refresh"
-    },
-    {
-      "id": "US-010",
-      "title": "Export all redesign components from index",
-      "acceptanceCriteria": [
-        "Ensure src/components/redesign/index.ts exports all components",
-        "Add any missing exports (AddClubModal, EditClubModal, WindArrow if created)",
-        "Verify existing exports: ResultCard, QuickAction, MetricPill",
-        "typecheck passes"
-      ],
-      "priority": 10,
-      "passes": false,
-      "notes": "Cleanup - ensure proper barrel exports"
+      "passes": true,
+      "notes": "Example story - replace with your actual stories"
     }
   ]
 }

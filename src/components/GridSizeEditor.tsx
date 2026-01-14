@@ -74,6 +74,9 @@ function NumberStepper({
             justifyContent: 'center',
             opacity: value <= min ? 0.5 : 1,
           }}
+          accessibilityLabel={`Decrease ${label} from ${value}`}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: value <= min }}
         >
           <Minus size={20} color={isDark ? '#fff' : '#333'} />
         </Pressable>
@@ -85,6 +88,7 @@ function NumberStepper({
             minWidth: 40,
             textAlign: 'center',
           }}
+          accessibilityLabel={`${label}: ${value}`}
         >
           {value}
         </Text>
@@ -102,6 +106,9 @@ function NumberStepper({
             justifyContent: 'center',
             opacity: value >= max ? 0.5 : 1,
           }}
+          accessibilityLabel={`Increase ${label} from ${value}`}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: value >= max }}
         >
           <Plus size={20} color={isDark ? '#fff' : '#333'} />
         </Pressable>
@@ -151,6 +158,8 @@ export function GridSizeEditor({
           backgroundColor: 'rgba(0,0,0,0.5)',
           justifyContent: 'flex-end',
         }}
+        accessibilityLabel="Close dialog"
+        accessibilityHint="Tap outside the dialog to close"
       >
         <Animated.View
           entering={SlideInDown.springify().damping(20)}
@@ -191,7 +200,12 @@ export function GridSizeEditor({
                     Grid Size
                   </Text>
                 </View>
-                <Pressable onPress={onClose} className="p-2">
+                <Pressable
+                  onPress={onClose}
+                  className="p-2"
+                  accessibilityLabel="Close grid size editor"
+                  accessibilityRole="button"
+                >
                   <X size={24} color={isDark ? '#888' : '#666'} />
                 </Pressable>
               </View>

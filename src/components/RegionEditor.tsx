@@ -76,6 +76,9 @@ function ConstraintTypeButton({
           borderColor: isDark ? '#444' : '#ddd',
           marginBottom: 8,
         }}
+        accessibilityLabel={`${label}: ${description}`}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: isSelected }}
       >
         <Text
           style={{
@@ -156,6 +159,8 @@ export function RegionEditor({
           backgroundColor: 'rgba(0,0,0,0.5)',
           justifyContent: 'flex-end',
         }}
+        accessibilityLabel="Close dialog"
+        accessibilityHint="Tap outside the dialog to close"
       >
         <Animated.View
           entering={SlideInDown.springify().damping(20)}
@@ -206,7 +211,12 @@ export function RegionEditor({
                     {isNew ? 'New Region' : 'Edit Region'}
                   </Text>
                 </View>
-                <Pressable onPress={onClose} className="p-2">
+                <Pressable
+                  onPress={onClose}
+                  className="p-2"
+                  accessibilityLabel="Close region editor"
+                  accessibilityRole="button"
+                >
                   <X size={24} color={isDark ? '#888' : '#666'} />
                 </Pressable>
               </View>

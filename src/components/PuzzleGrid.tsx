@@ -201,6 +201,9 @@ function GridCell({
           alignItems: 'center',
           overflow: 'hidden',
         }}
+        accessibilityLabel={`Cell at row ${cell.row + 1}, column ${cell.col + 1}${placedPip !== null ? `, value ${placedPip}` : ''}${constraintText ? `, constraint ${constraintText}` : ''}`}
+        accessibilityHint={isEditMode ? "Tap to assign to selected region. Long press to edit region." : undefined}
+        accessibilityRole="button"
       >
         {placedPip !== null ? (
           <Animated.View entering={FadeIn.duration(200)}>

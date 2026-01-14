@@ -1,0 +1,222 @@
+{
+  "branchName": "ui/multi-agent-polish",
+  "pipelineConfig": {
+    "strategy": "per-component-then-global",
+    "reviewers": ["rams", "gpt-moderator", "frontend-app-design"],
+    "autoCommit": true,
+    "requireAllReviewersPass": true
+  },
+  "globalConsistencyCheck": {
+    "enabled": true,
+    "runAfterAllComponents": true,
+    "passes": false
+  },
+  "userStories": [
+    {
+      "id": "UI-001",
+      "title": "Main Puzzle Screen Polish",
+      "component": "src/app/index.tsx",
+      "relatedFiles": [
+        "src/components/PuzzleGrid.tsx",
+        "src/components/DominoTray.tsx",
+        "src/components/EmptyPuzzleState.tsx"
+      ],
+      "phases": {
+        "rams-review": { "status": "pending", "output": null },
+        "gpt-cross-review": { "status": "pending", "output": null },
+        "skills-synthesis": { "status": "pending", "output": null },
+        "final-plan": { "status": "pending", "output": null },
+        "implementation": { "status": "pending", "output": null },
+        "post-review": { "status": "pending", "output": null },
+        "gpt-verification": { "status": "pending", "output": null },
+        "fixes": { "status": "pending", "output": null }
+      },
+      "currentPhase": "rams-review",
+      "priority": 1,
+      "passes": false
+    },
+    {
+      "id": "UI-002",
+      "title": "Camera Screen Polish",
+      "component": "src/app/camera.tsx",
+      "relatedFiles": [
+        "src/components/DualImageCropper.tsx",
+        "src/components/ExtractionProgress.tsx"
+      ],
+      "phases": {
+        "rams-review": { "status": "pending", "output": null },
+        "gpt-cross-review": { "status": "pending", "output": null },
+        "skills-synthesis": { "status": "pending", "output": null },
+        "final-plan": { "status": "pending", "output": null },
+        "implementation": { "status": "pending", "output": null },
+        "post-review": { "status": "pending", "output": null },
+        "gpt-verification": { "status": "pending", "output": null },
+        "fixes": { "status": "pending", "output": null }
+      },
+      "currentPhase": "rams-review",
+      "priority": 2,
+      "passes": false
+    },
+    {
+      "id": "UI-003",
+      "title": "Saved Puzzles Screen Polish",
+      "component": "src/app/saved.tsx",
+      "relatedFiles": [
+        "src/components/ui/GlassCard.tsx"
+      ],
+      "phases": {
+        "rams-review": { "status": "pending", "output": null },
+        "gpt-cross-review": { "status": "pending", "output": null },
+        "skills-synthesis": { "status": "pending", "output": null },
+        "final-plan": { "status": "pending", "output": null },
+        "implementation": { "status": "pending", "output": null },
+        "post-review": { "status": "pending", "output": null },
+        "gpt-verification": { "status": "pending", "output": null },
+        "fixes": { "status": "pending", "output": null }
+      },
+      "currentPhase": "rams-review",
+      "priority": 3,
+      "passes": false
+    },
+    {
+      "id": "UI-004",
+      "title": "Puzzle Grid Component Polish",
+      "component": "src/components/PuzzleGrid.tsx",
+      "relatedFiles": [
+        "src/components/DominoEditor.tsx",
+        "src/components/GridSizeEditor.tsx",
+        "src/components/RegionEditor.tsx"
+      ],
+      "phases": {
+        "rams-review": { "status": "pending", "output": null },
+        "gpt-cross-review": { "status": "pending", "output": null },
+        "skills-synthesis": { "status": "pending", "output": null },
+        "final-plan": { "status": "pending", "output": null },
+        "implementation": { "status": "pending", "output": null },
+        "post-review": { "status": "pending", "output": null },
+        "gpt-verification": { "status": "pending", "output": null },
+        "fixes": { "status": "pending", "output": null }
+      },
+      "currentPhase": "rams-review",
+      "priority": 4,
+      "passes": false
+    },
+    {
+      "id": "UI-005",
+      "title": "Domino Editor & Tray Polish",
+      "component": "src/components/DominoEditor.tsx",
+      "relatedFiles": [
+        "src/components/DominoTray.tsx",
+        "src/components/EditToolbar.tsx"
+      ],
+      "phases": {
+        "rams-review": { "status": "pending", "output": null },
+        "gpt-cross-review": { "status": "pending", "output": null },
+        "skills-synthesis": { "status": "pending", "output": null },
+        "final-plan": { "status": "pending", "output": null },
+        "implementation": { "status": "pending", "output": null },
+        "post-review": { "status": "pending", "output": null },
+        "gpt-verification": { "status": "pending", "output": null },
+        "fixes": { "status": "pending", "output": null }
+      },
+      "currentPhase": "rams-review",
+      "priority": 5,
+      "passes": false
+    },
+    {
+      "id": "UI-006",
+      "title": "Setup Wizard & Modals Polish",
+      "component": "src/components/PuzzleSetupWizard.tsx",
+      "relatedFiles": [
+        "src/components/GridSizeHintModal.tsx",
+        "src/components/IslandConfigModal.tsx",
+        "src/components/SavePuzzleModal.tsx",
+        "src/components/SolveModeSelector.tsx"
+      ],
+      "phases": {
+        "rams-review": { "status": "pending", "output": null },
+        "gpt-cross-review": { "status": "pending", "output": null },
+        "skills-synthesis": { "status": "pending", "output": null },
+        "final-plan": { "status": "pending", "output": null },
+        "implementation": { "status": "pending", "output": null },
+        "post-review": { "status": "pending", "output": null },
+        "gpt-verification": { "status": "pending", "output": null },
+        "fixes": { "status": "pending", "output": null }
+      },
+      "currentPhase": "rams-review",
+      "priority": 6,
+      "passes": false
+    },
+    {
+      "id": "UI-007",
+      "title": "Core UI Components Polish",
+      "component": "src/components/ui/",
+      "isDirectory": true,
+      "relatedFiles": [
+        "src/components/ui/Background.tsx",
+        "src/components/ui/GlassCard.tsx",
+        "src/components/ui/GradientButton.tsx",
+        "src/components/ui/Toast.tsx",
+        "src/components/ui/Typography.tsx"
+      ],
+      "phases": {
+        "rams-review": { "status": "pending", "output": null },
+        "gpt-cross-review": { "status": "pending", "output": null },
+        "skills-synthesis": { "status": "pending", "output": null },
+        "final-plan": { "status": "pending", "output": null },
+        "implementation": { "status": "pending", "output": null },
+        "post-review": { "status": "pending", "output": null },
+        "gpt-verification": { "status": "pending", "output": null },
+        "fixes": { "status": "pending", "output": null }
+      },
+      "currentPhase": "rams-review",
+      "priority": 7,
+      "passes": false
+    },
+    {
+      "id": "UI-008",
+      "title": "Navigation & Layout Polish",
+      "component": "src/app/_layout.tsx",
+      "relatedFiles": [
+        "src/components/ActionButton.tsx"
+      ],
+      "phases": {
+        "rams-review": { "status": "pending", "output": null },
+        "gpt-cross-review": { "status": "pending", "output": null },
+        "skills-synthesis": { "status": "pending", "output": null },
+        "final-plan": { "status": "pending", "output": null },
+        "implementation": { "status": "pending", "output": null },
+        "post-review": { "status": "pending", "output": null },
+        "gpt-verification": { "status": "pending", "output": null },
+        "fixes": { "status": "pending", "output": null }
+      },
+      "currentPhase": "rams-review",
+      "priority": 8,
+      "passes": false
+    },
+    {
+      "id": "UI-GLOBAL",
+      "title": "Global Consistency Check",
+      "component": "GLOBAL",
+      "isGlobalCheck": true,
+      "checkpoints": [
+        "NativeWind/Tailwind class consistency across all screens",
+        "Theme token usage (src/lib/theme.ts)",
+        "Typography consistency (src/lib/fonts.ts)",
+        "Animation timing consistency (src/lib/animations.ts)",
+        "Haptic feedback patterns (src/lib/haptics.ts)",
+        "Accessibility standards (contrast, touch targets)",
+        "Dark mode consistency",
+        "Gesture interaction patterns"
+      ],
+      "phases": {
+        "global-review": { "status": "blocked", "output": null, "blockedBy": "all-components" },
+        "final-fixes": { "status": "pending", "output": null },
+        "commit": { "status": "pending", "output": null }
+      },
+      "currentPhase": "global-review",
+      "priority": 99,
+      "passes": false
+    }
+  ]
+}

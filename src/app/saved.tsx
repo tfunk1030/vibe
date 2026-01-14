@@ -506,6 +506,8 @@ export default function SavedPuzzlesScreen() {
               borderRadius: 10,
               backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
             }}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
           >
             <ChevronLeft size={24} color={isDark ? '#fff' : '#333'} />
           </Pressable>

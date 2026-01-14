@@ -68,6 +68,9 @@ function ModeButton({
           backgroundColor: isActive ? activeColor : inactiveColor,
           gap: 4,
         }}
+        accessibilityLabel={`${label} mode`}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: isActive }}
       >
         <Icon size={16} color={iconColor} />
         <Text
