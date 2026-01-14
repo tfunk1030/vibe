@@ -40,7 +40,7 @@ If you discover reusable patterns, add them to the TOP of progress.txt under "##
 2. **Typecheck must pass** - run `bunx tsc --noEmit` before committing
 3. **Read progress.txt first** - patterns from previous stories help you
 4. **Follow CLAUDE.md** - styling, state management rules are mandatory
-5. **Use src/ paths** - keep imports clean
+5. **Use @/ imports** - keep imports clean
 6. **NativeWind styling** - use className with Tailwind classes, use cn() for conditional classes
 7. **DO NOT install packages** - unless they're @expo-google-fonts or pure JS helpers
 
@@ -55,7 +55,7 @@ Otherwise, end normally after completing one story.
 
 ```tsx
 // Styling
-import { cn } from '@/src/lib/cn';
+import { cn } from '@/lib/cn';
 
 // Routing
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -69,8 +69,8 @@ import Animated, { FadeIn, FadeInDown, useAnimatedStyle, withSpring } from 'reac
 // Gestures
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 
-// Icons
-import { IconName } from 'lucide-react-native';
+// Icons (example)
+import { Home } from 'lucide-react-native';
 
 // Haptics
 import * as Haptics from 'expo-haptics';

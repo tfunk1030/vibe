@@ -146,11 +146,11 @@ function CropBox({
 
   const handleStyle = useAnimatedStyle(() => ({
     position: 'absolute',
-    right: -12,
-    bottom: -12,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    right: -22,
+    bottom: -22,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#3B82F6',
     justifyContent: 'center',
     alignItems: 'center',
@@ -212,7 +212,7 @@ function CropBox({
           {/* Resize handle */}
           <GestureDetector gesture={resizeGesture}>
             <Animated.View style={handleStyle}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} />
+              <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff' }} />
             </Animated.View>
           </GestureDetector>
         </Animated.View>

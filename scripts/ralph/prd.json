@@ -10,7 +10,7 @@
         "typecheck passes"
       ],
       "priority": 1,
-      "passes": true,
+      "passes": false,
       "notes": "Example story - replace with your actual stories"
     }
   ]

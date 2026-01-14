@@ -787,11 +787,12 @@ export default function HomeScreen() {
                       reset();
                     }}
                     style={{
-                      padding: 10,
+                      padding: 12,
                       borderRadius: 10,
                       backgroundColor: isDark ? '#2a2a2a' : '#e5e5e5',
                       marginRight: 12,
                     }}
+                    hitSlop={8}
                     accessibilityLabel="Return to home screen"
                     accessibilityRole="button"
                   >

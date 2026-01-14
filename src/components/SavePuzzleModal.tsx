@@ -111,6 +111,7 @@ export function SavePuzzleModal({
                   borderRadius: 8,
                   backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
                 }}
+                hitSlop={8}
                 accessibilityLabel="Close save dialog"
                 accessibilityRole="button"
               >

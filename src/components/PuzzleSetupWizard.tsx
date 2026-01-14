@@ -40,6 +40,7 @@ import {
 } from 'lucide-react-native';
 import { IslandConfig } from '@/lib/types/puzzle';
 import { GridSizeHint, detectGridDimensions } from '@/lib/services/gemini';
+import { IslandConfigModal } from './IslandConfigModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_CONTAINER_WIDTH = SCREEN_WIDTH - 40;
@@ -305,6 +306,7 @@ export function PuzzleSetupWizard({
   const [isMultiIsland, setIsMultiIsland] = useState(false);
   const [islandConfigs, setIslandConfigs] = useState<IslandConfig[]>([]);
   const [currentIslandIndex, setCurrentIslandIndex] = useState(0);
+  const [showIslandConfig, setShowIslandConfig] = useState(false);
 
   // Size hints
   const [cols, setCols] = useState(5);
@@ -348,6 +350,7 @@ export function PuzzleSetupWizard({
       setIsMultiIsland(false);
       setIslandConfigs([]);
       setCurrentIslandIndex(0);
+      setShowIslandConfig(false);
       setCols(5);
       setRows(5);
       setDominoCount(8);
@@ -448,10 +451,26 @@ export function PuzzleSetupWizard({
         { x: 20, y: 20, width: 150, height: 150 },
         { x: 20, y: 20, width: 150, height: 150 },
       ]);
+      setGridImageUris([]);
+      setCurrentIslandIndex(0);
+    }
+    if (!multi) {
+      setIslandConfigs([]);
+      setIslandCropRegions([]);
+      setGridImageUris([]);
+      setCurrentIslandIndex(0);
     }
     setStep('size');
     handleAutoDetect();
   }, [handleAutoDetect]);
+
+  const handleUpdateIslands = useCallback((configs: IslandConfig[]) => {
+    setIslandConfigs(configs);
+    setIslandCropRegions(configs.map(() => ({ x: 20, y: 20, width: 150, height: 150 })));
+    setGridImageUris([]);
+    setCurrentIslandIndex(0);
+    setShowIslandConfig(false);
+  }, []);
 
   const handleSizeNext = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -513,7 +532,7 @@ export function PuzzleSetupWizard({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const sizeHint: GridSizeHint = { cols, rows, dominoCount };
 
-    if (isMultiIsland && onCompleteMulti && dominoImageUri && gridImageUris.length > 0) {
+    if (isMultiIsland && onCompleteMulti && dominoImageUri && gridImageUris.length === islandConfigs.length) {
       onCompleteMulti(dominoImageUri, gridImageUris, islandConfigs);
     } else if (dominoImageUri && gridImageUri) {
       onComplete(dominoImageUri, gridImageUri, sizeHint);
@@ -629,6 +648,40 @@ export function PuzzleSetupWizard({
           <NumberStepper label="Columns" value={cols} onChange={setCols} min={2} max={12} isDark={isDark} />
           <NumberStepper label="Rows" value={rows} onChange={setRows} min={2} max={12} isDark={isDark} />
           <NumberStepper label="Dominoes" value={dominoCount} onChange={setDominoCount} min={1} max={30} isDark={isDark} />
+        {isMultiIsland && (
+          <View style={{ marginTop: 16, gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#fff' : '#111' }}>
+                  Islands
+                </Text>
+                <Text style={{ fontSize: 13, color: isDark ? '#888' : '#666' }}>
+                  {islandConfigs.length} island{islandConfigs.length === 1 ? '' : 's'} configured
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowIslandConfig(true)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 12,
+                  backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0',
+                  gap: 8,
+                }}
+                accessibilityLabel="Configure islands"
+                accessibilityRole="button"
+              >
+                <Layers size={18} color={isDark ? '#fff' : '#3B82F6'} />
+                <Text style={{ color: isDark ? '#fff' : '#111', fontWeight: '600' }}>Configure</Text>
+              </Pressable>
+            </View>
+            <Text style={{ fontSize: 13, color: isDark ? '#777' : '#666' }}>
+              Adjust how many islands to crop (up to 5). Each island will be cropped separately.
+            </Text>
+          </View>
+        )}
         </View>
 
         {/* Summary */}
@@ -942,6 +995,12 @@ export function PuzzleSetupWizard({
           )}
           {step === 'preview' && renderPreviewStep()}
         </SafeAreaView>
+        <IslandConfigModal
+          visible={showIslandConfig}
+          onClose={() => setShowIslandConfig(false)}
+          onConfirm={handleUpdateIslands}
+          isDark={isDark}
+        />
       </View>
     </Modal>
   );

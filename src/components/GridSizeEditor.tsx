@@ -203,6 +203,7 @@ export function GridSizeEditor({
                 <Pressable
                   onPress={onClose}
                   className="p-2"
+                  hitSlop={8}
                   accessibilityLabel="Close grid size editor"
                   accessibilityRole="button"
                 >

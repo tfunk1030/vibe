@@ -214,6 +214,7 @@ export function RegionEditor({
                 <Pressable
                   onPress={onClose}
                   className="p-2"
+                  hitSlop={8}
                   accessibilityLabel="Close region editor"
                   accessibilityRole="button"
                 >

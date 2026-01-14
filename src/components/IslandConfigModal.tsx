@@ -291,6 +291,7 @@ export function IslandConfigModal({
               <Pressable
                 onPress={onClose}
                 style={{ padding: 8 }}
+                hitSlop={8}
                 accessibilityLabel="Close island configuration"
                 accessibilityRole="button"
               >

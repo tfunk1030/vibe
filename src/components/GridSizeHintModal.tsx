@@ -245,6 +245,7 @@ export function GridSizeHintModal({
                 <Pressable
                   onPress={onClose}
                   className="p-2"
+                  hitSlop={8}
                   accessibilityLabel="Close size hints"
                   accessibilityRole="button"
                 >
