@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, AccessibilityInfo } from 'react-native';
 import Animated, {
   FadeIn,
   useSharedValue,
@@ -49,6 +49,13 @@ export function ExtractionProgress({ stage, isDark }: ExtractionProgressProps) {
       cancelAnimation(pulse);
     };
   }, [stage, pulse]);
+
+  // Announce stage changes to screen readers
+  useEffect(() => {
+    if (stage !== 'idle') {
+      AccessibilityInfo.announceForAccessibility(stageInfo.text);
+    }
+  }, [stage, stageInfo.text]);
 
   const pulseStyle = useAnimatedStyle(() => ({
     opacity: pulse.value,
@@ -111,8 +118,12 @@ export function ExtractionProgress({ stage, isDark }: ExtractionProgressProps) {
         </Text>
       </View>
 
-      {/* Stage Indicators */}
-      <View className="flex-row items-center justify-center mt-6 gap-2">
+      {/* Stage Indicators - decorative, hidden from screen readers */}
+      <View
+        className="flex-row items-center justify-center mt-6 gap-2"
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden={true}
+      >
         {stages.map((s, index) => {
           const stageIndex = allStages.indexOf(s);
           const isActive = stageIndex <= currentIndex && stage !== 'idle';

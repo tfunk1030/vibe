@@ -168,7 +168,13 @@ function DominoTile({
   }
 
   return (
-    <Animated.View entering={FadeIn} exiting={FadeOut}>
+    <Animated.View
+      entering={FadeIn}
+      exiting={FadeOut}
+      accessible={true}
+      accessibilityLabel={`Domino ${domino.pips[0]}-${domino.pips[1]}${isUsed ? ', placed on grid' : ', available'}`}
+      accessibilityRole="text"
+    >
       {content}
     </Animated.View>
   );

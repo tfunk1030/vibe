@@ -559,6 +559,9 @@ export function PuzzleSetupWizard({
           borderWidth: 2,
           borderColor: '#3B82F6',
         }}
+        accessibilityLabel="Single Grid"
+        accessibilityHint="Standard puzzle with one connected area"
+        accessibilityRole="button"
       >
         <View className="flex-row items-center gap-4">
           <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: '#3B82F620', alignItems: 'center', justifyContent: 'center' }}>
@@ -585,6 +588,9 @@ export function PuzzleSetupWizard({
           borderWidth: 1,
           borderColor: isDark ? '#333' : '#e0e0e0',
         }}
+        accessibilityLabel="Multiple Islands"
+        accessibilityHint="Separate grids sharing one domino pool"
+        accessibilityRole="button"
       >
         <View className="flex-row items-center gap-4">
           <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: '#8B5CF620', alignItems: 'center', justifyContent: 'center' }}>
@@ -627,12 +633,17 @@ export function PuzzleSetupWizard({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
+            minHeight: 48,
             paddingVertical: 14,
             borderRadius: 12,
             backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0',
             marginBottom: 20,
             gap: 8,
           }}
+          accessibilityLabel={isDetecting ? 'Detecting puzzle dimensions' : 'Auto-detect from image'}
+          accessibilityHint="Automatically detect grid size and domino count"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isDetecting }}
         >
           {isDetecting ? (
             <ActivityIndicator size="small" color="#3B82F6" />
@@ -700,12 +711,16 @@ export function PuzzleSetupWizard({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
+            minHeight: 56,
             paddingVertical: 16,
             borderRadius: 14,
             backgroundColor: '#3B82F6',
             marginBottom: 8,
             gap: 8,
           }}
+          accessibilityLabel="Continue to Crop"
+          accessibilityHint="Proceed to cropping the domino and grid areas"
+          accessibilityRole="button"
         >
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Continue to Crop</Text>
           <ChevronRight size={20} color="#fff" />
@@ -734,21 +749,26 @@ export function PuzzleSetupWizard({
           <Text style={{ fontSize: 13, color: isDark ? '#888' : '#666' }}>{subtitle}</Text>
         </View>
         {/* Reference thumbnail */}
-        <Pressable 
+        <Pressable
           onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-          style={{ 
-            width: 50, 
-            height: 50, 
-            borderRadius: 8, 
+          style={{
+            minWidth: 50,
+            minHeight: 50,
+            borderRadius: 8,
             overflow: 'hidden',
             borderWidth: 2,
             borderColor: isDark ? '#444' : '#ddd',
           }}
+          accessibilityLabel="Reference image thumbnail"
+          accessibilityHint="Tap to preview the original image"
+          accessibilityRole="button"
         >
           <Image
             source={{ uri: sourceImageUri }}
             style={{ width: '100%', height: '100%' }}
             resizeMode="cover"
+            accessible={true}
+            accessibilityLabel="Original puzzle screenshot"
           />
         </Pressable>
       </View>
@@ -833,11 +853,16 @@ export function PuzzleSetupWizard({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
+            minHeight: 56,
             paddingVertical: 16,
             borderRadius: 14,
             backgroundColor: '#3B82F6',
             gap: 8,
           }}
+          accessibilityLabel={isProcessing ? 'Processing crop' : 'Confirm Crop'}
+          accessibilityHint="Confirm the selected crop area"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isProcessing }}
         >
           {isProcessing ? (
             <ActivityIndicator color="#fff" />
@@ -906,11 +931,15 @@ export function PuzzleSetupWizard({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
+            minHeight: 56,
             paddingVertical: 16,
             borderRadius: 14,
             backgroundColor: isDark ? '#333' : '#e5e5e5',
             gap: 8,
           }}
+          accessibilityLabel="Redo crops"
+          accessibilityHint="Go back and recrop the domino and grid areas"
+          accessibilityRole="button"
         >
           <RefreshCw size={18} color={isDark ? '#fff' : '#333'} />
           <Text style={{ color: isDark ? '#fff' : '#333', fontWeight: '700', fontSize: 15 }}>Redo</Text>
@@ -922,11 +951,15 @@ export function PuzzleSetupWizard({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
+            minHeight: 56,
             paddingVertical: 16,
             borderRadius: 14,
             backgroundColor: '#22C55E',
             gap: 8,
           }}
+          accessibilityLabel="Analyze puzzle"
+          accessibilityHint="Start AI analysis of your puzzle"
+          accessibilityRole="button"
         >
           <Sparkles size={18} color="#fff" />
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Analyze</Text>
@@ -945,7 +978,9 @@ export function PuzzleSetupWizard({
           <View className="flex-row items-center justify-between px-4 py-2" style={{ borderBottomWidth: 1, borderBottomColor: isDark ? '#333' : '#e0e0e0' }}>
             <Pressable
               onPress={canGoBack ? handleBack : onClose}
-              style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+              style={{ minWidth: 48, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+              accessibilityLabel={canGoBack ? "Go back" : "Close wizard"}
+              accessibilityRole="button"
             >
               {canGoBack ? (
                 <ChevronLeft size={24} color={isDark ? '#fff' : '#333'} />

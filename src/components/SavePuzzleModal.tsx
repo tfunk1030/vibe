@@ -107,11 +107,13 @@ export function SavePuzzleModal({
               <Pressable
                 onPress={onClose}
                 style={{
-                  padding: 8,
-                  borderRadius: 8,
+                  minWidth: 48,
+                  minHeight: 48,
+                  borderRadius: 12,
                   backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
-                hitSlop={8}
                 accessibilityLabel="Close save dialog"
                 accessibilityRole="button"
               >
@@ -157,10 +159,15 @@ export function SavePuzzleModal({
                 onPress={onClose}
                 className="flex-1"
                 style={{
-                  padding: 14,
+                  minHeight: 48,
+                  paddingVertical: 14,
                   borderRadius: 12,
                   backgroundColor: isDark ? '#2a2a3e' : '#e5e5e5',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
+                accessibilityLabel="Cancel"
+                accessibilityRole="button"
               >
                 <Text
                   style={{
@@ -177,11 +184,18 @@ export function SavePuzzleModal({
                 onPress={handleSave}
                 className="flex-1"
                 style={{
-                  padding: 14,
+                  minHeight: 48,
+                  paddingVertical: 14,
                   borderRadius: 12,
                   backgroundColor: name.trim() ? '#3B82F6' : isDark ? '#333' : '#ddd',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
                 disabled={!name.trim()}
+                accessibilityLabel={isEditing ? "Update puzzle" : "Save puzzle"}
+                accessibilityHint={name.trim() ? undefined : "Enter a name first"}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !name.trim() }}
               >
                 <Text
                   style={{

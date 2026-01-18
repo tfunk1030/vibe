@@ -341,6 +341,9 @@ function EmptyGridCell({
           justifyContent: 'center',
           alignItems: 'center',
         }}
+        accessibilityLabel={`Add cell at row ${cell.row + 1}, column ${cell.col + 1}`}
+        accessibilityHint="Tap to add this cell to the selected region"
+        accessibilityRole="button"
       >
         <Plus size={cellSize * 0.3} color={isHighlighted ? highlightColor : isDark ? '#444' : '#ccc'} />
       </Pressable>

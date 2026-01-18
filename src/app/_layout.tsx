@@ -18,14 +18,6 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ animation: 'slide_from_right' }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="camera"
-          options={{
-            presentation: 'fullScreenModal',
-            headerShown: false,
-            animation: 'slide_from_bottom',
-          }}
-        />
       </Stack>
     </ThemeProvider>
   );

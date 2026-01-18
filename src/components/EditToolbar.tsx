@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import Animated, {
   FadeIn,
   useAnimatedStyle,
@@ -20,6 +20,8 @@ import {
 import * as Haptics from 'expo-haptics';
 import { Region, constraintLabel } from '@/lib/types/puzzle';
 import { GridEditMode } from '@/lib/state/puzzle-store';
+import { colors, sizing, spacing, typography } from '@/theme/tokens';
+import { useReducedMotion } from '@/lib/hooks/useReducedMotion';
 
 interface EditToolbarProps {
   regions: Region[];
@@ -51,6 +53,7 @@ function ToolButton({
   activeColor,
   disabled = false,
   accessibilityLabel,
+  accessibilityHint,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -61,63 +64,85 @@ function ToolButton({
   activeColor?: string;
   disabled?: boolean;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
 }) {
   const scale = useSharedValue(1);
+  const reduceMotion = useReducedMotion();
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
+  const handlePressIn = useCallback(() => {
+    if (!disabled) {
+      scale.value = reduceMotion ? 0.95 : withSpring(0.95, { damping: 15, stiffness: 400 });
+    }
+  }, [disabled, reduceMotion, scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = reduceMotion ? 1 : withSpring(1, { damping: 15, stiffness: 400 });
+  }, [reduceMotion, scale]);
+
+  const handlePress = useCallback(() => {
+    if (!disabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onPress();
+    }
+  }, [disabled, onPress]);
+
   const bgColor = isActive
-    ? (activeColor ?? '#3B82F6')
+    ? (activeColor ?? colors.primary.default)
     : isDark
-      ? '#2a2a2a'
-      : '#f0f0f0';
+      ? colors.dark.surfaceElevated
+      : colors.light.background;
+
+  const textColor = isActive
+    ? '#FFFFFF'
+    : isDark
+      ? colors.dark.textSecondary
+      : colors.light.textSecondary;
 
   return (
     <Animated.View style={animatedStyle}>
       <Pressable
-        onPress={() => {
-          if (!disabled) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onPress();
-          }
-        }}
-        onPressIn={() => {
-          if (!disabled) scale.value = withSpring(0.95);
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1);
-        }}
+        onPress={handlePress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
         accessibilityLabel={accessibilityLabel || label}
+        accessibilityHint={accessibilityHint}
         accessibilityRole="button"
         accessibilityState={{ disabled, selected: isActive }}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          minHeight: 44,
-          paddingVertical: small ? 10 : 12,
-          paddingHorizontal: small ? 12 : 16,
-          borderRadius: 12,
-          backgroundColor: bgColor,
-          gap: 8,
-          opacity: disabled ? 0.4 : 1,
-        }}
+        style={[
+          toolButtonStyles.button,
+          {
+            minHeight: sizing.touchTarget,
+            paddingVertical: small ? spacing.sm : spacing.md,
+            paddingHorizontal: small ? spacing.md : spacing.lg,
+            backgroundColor: bgColor,
+            opacity: disabled ? 0.4 : 1,
+          },
+        ]}
       >
         {icon}
-        <Text
-          style={{
-            fontSize: small ? 13 : 14,
-            fontWeight: '600',
-            color: isActive ? '#fff' : isDark ? '#ccc' : '#555',
-          }}
-        >
+        <Text style={[toolButtonStyles.label, { fontSize: small ? typography.xs : typography.sm, color: textColor }]}>
           {label}
         </Text>
       </Pressable>
     </Animated.View>
   );
 }
+
+const toolButtonStyles = StyleSheet.create({
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: sizing.radiusLg,
+    gap: spacing.sm,
+  },
+  label: {
+    fontWeight: '600',
+  },
+});
 
 function RegionChip({
   region,
@@ -133,64 +158,62 @@ function RegionChip({
   isDark: boolean;
 }) {
   const scale = useSharedValue(1);
+  const reduceMotion = useReducedMotion();
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
+  const handlePressIn = useCallback(() => {
+    scale.value = reduceMotion ? 0.95 : withSpring(0.95, { damping: 15, stiffness: 400 });
+  }, [reduceMotion, scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = reduceMotion ? 1 : withSpring(1, { damping: 15, stiffness: 400 });
+  }, [reduceMotion, scale]);
+
+  const label = constraintLabel(region.constraint);
+
   return (
-    <Animated.View style={[animatedStyle, { marginRight: 10 }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+    <Animated.View style={[animatedStyle, regionChipStyles.wrapper]}>
+      <View style={regionChipStyles.container}>
         <Pressable
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             onPress();
           }}
-          onPressIn={() => {
-            scale.value = withSpring(0.95);
-          }}
-          onPressOut={() => {
-            scale.value = withSpring(1);
-          }}
-          accessibilityLabel={`Select region ${constraintLabel(region.constraint)}`}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          accessibilityLabel={`Select region ${label}`}
+          accessibilityHint="Double tap to select this region for painting cells"
           accessibilityRole="button"
           accessibilityState={{ selected: isSelected }}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            minHeight: 44,
-            paddingVertical: 10,
-            paddingLeft: 14,
-            paddingRight: 10,
-            borderTopLeftRadius: 12,
-            borderBottomLeftRadius: 12,
-            backgroundColor: isSelected
-              ? region.color
-              : isDark
-                ? '#2a2a2a'
-                : '#f0f0f0',
-            borderWidth: isSelected ? 2 : 1,
-            borderRightWidth: 0,
-            borderColor: isSelected ? region.color : isDark ? '#444' : '#ddd',
-            gap: 8,
-          }}
+          style={[
+            regionChipStyles.selectButton,
+            {
+              backgroundColor: isSelected
+                ? region.color
+                : isDark
+                  ? colors.dark.surfaceElevated
+                  : colors.light.background,
+              borderWidth: isSelected ? 2 : 1,
+              borderColor: isSelected ? region.color : isDark ? colors.dark.borderStrong : colors.light.border,
+            },
+          ]}
         >
           <View
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: 4,
-              backgroundColor: isSelected ? '#fff' : region.color,
-            }}
+            style={[
+              regionChipStyles.colorDot,
+              { backgroundColor: isSelected ? '#FFFFFF' : region.color },
+            ]}
           />
           <Text
-            style={{
-              fontSize: 14,
-              fontWeight: '600',
-              color: isSelected ? '#fff' : isDark ? '#fff' : '#333',
-            }}
+            style={[
+              regionChipStyles.label,
+              { color: isSelected ? '#FFFFFF' : isDark ? colors.dark.text : colors.light.text },
+            ]}
           >
-            {constraintLabel(region.constraint)}
+            {label}
           </Text>
         </Pressable>
         <Pressable
@@ -198,33 +221,70 @@ function RegionChip({
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             onEditPress();
           }}
-          accessibilityLabel={`Edit region ${constraintLabel(region.constraint)}`}
+          accessibilityLabel={`Edit region ${label}`}
+          accessibilityHint="Double tap to edit region constraints"
           accessibilityRole="button"
-          style={{
-            minHeight: 44,
-            minWidth: 44,
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            borderTopRightRadius: 12,
-            borderBottomRightRadius: 12,
-            backgroundColor: isSelected
-              ? region.color
-              : isDark
-                ? '#2a2a2a'
-                : '#f0f0f0',
-            borderWidth: isSelected ? 2 : 1,
-            borderLeftWidth: 0,
-            borderColor: isSelected ? region.color : isDark ? '#444' : '#ddd',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          style={[
+            regionChipStyles.editButton,
+            {
+              backgroundColor: isSelected
+                ? region.color
+                : isDark
+                  ? colors.dark.surfaceElevated
+                  : colors.light.background,
+              borderWidth: isSelected ? 2 : 1,
+              borderColor: isSelected ? region.color : isDark ? colors.dark.borderStrong : colors.light.border,
+            },
+          ]}
         >
-          <Pencil size={18} color={isSelected ? '#fff' : isDark ? '#888' : '#666'} />
+          <Pencil size={sizing.iconSm} color={isSelected ? '#FFFFFF' : isDark ? colors.dark.textSecondary : colors.light.textSecondary} />
         </Pressable>
       </View>
     </Animated.View>
   );
 }
+
+const regionChipStyles = StyleSheet.create({
+  wrapper: {
+    marginRight: spacing.sm,
+  },
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: sizing.touchTarget,
+    paddingVertical: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
+    borderTopLeftRadius: sizing.radiusLg,
+    borderBottomLeftRadius: sizing.radiusLg,
+    borderRightWidth: 0,
+    gap: spacing.sm,
+  },
+  colorDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+  },
+  label: {
+    fontSize: typography.sm,
+    fontWeight: '600',
+  },
+  editButton: {
+    minHeight: sizing.touchTarget,
+    minWidth: sizing.touchTarget,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderTopRightRadius: sizing.radiusLg,
+    borderBottomRightRadius: sizing.radiusLg,
+    borderLeftWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 function AddRegionButton({
   onPress,
@@ -234,10 +294,19 @@ function AddRegionButton({
   isDark: boolean;
 }) {
   const scale = useSharedValue(1);
+  const reduceMotion = useReducedMotion();
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = reduceMotion ? 0.95 : withSpring(0.95, { damping: 15, stiffness: 400 });
+  }, [reduceMotion, scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = reduceMotion ? 1 : withSpring(1, { damping: 15, stiffness: 400 });
+  }, [reduceMotion, scale]);
 
   return (
     <Animated.View style={animatedStyle}>
@@ -246,39 +315,44 @@ function AddRegionButton({
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           onPress();
         }}
-        onPressIn={() => {
-          scale.value = withSpring(0.95);
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1);
-        }}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          borderRadius: 10,
-          backgroundColor: isDark ? '#1a3a1a' : '#e8f5e9',
-          borderWidth: 2,
-          borderColor: '#4CAF50',
-          borderStyle: 'dashed',
-          gap: 6,
-        }}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        accessibilityLabel="Add new region"
+        accessibilityHint="Double tap to create a new region with constraints"
+        accessibilityRole="button"
+        style={[
+          addButtonStyles.button,
+          {
+            backgroundColor: isDark ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.08)',
+          },
+        ]}
       >
-        <Plus size={16} color="#4CAF50" />
-        <Text
-          style={{
-            fontSize: 13,
-            fontWeight: '600',
-            color: '#4CAF50',
-          }}
-        >
-          Add
-        </Text>
+        <Plus size={sizing.iconSm} color={colors.success.default} />
+        <Text style={addButtonStyles.label}>Add</Text>
       </Pressable>
     </Animated.View>
   );
 }
+
+const addButtonStyles = StyleSheet.create({
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: sizing.touchTarget,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: sizing.radiusMd,
+    borderWidth: 2,
+    borderColor: colors.success.default,
+    borderStyle: 'dashed',
+    gap: spacing.xs,
+  },
+  label: {
+    fontSize: typography.xs,
+    fontWeight: '600',
+    color: colors.success.default,
+  },
+});
 
 export function EditToolbar({
   regions,
@@ -302,45 +376,60 @@ export function EditToolbar({
   // Get selected region color for paint bucket icon
   const selectedRegion = regions.find(r => r.id === selectedRegionId);
   const paintBucketColor = isPaintBucketMode
-    ? '#fff'
-    : selectedRegion?.color ?? (isDark ? '#ccc' : '#555');
+    ? '#FFFFFF'
+    : selectedRegion?.color ?? (isDark ? colors.dark.textSecondary : colors.light.textSecondary);
+
+  const handleToggleTools = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowTools(!showTools);
+  }, [showTools]);
+
+  // Instruction text based on mode
+  const getInstructionText = () => {
+    if (isRemoveCellMode) return 'Tap cells to remove them from the grid';
+    if (isPaintBucketMode) return 'Tap to fill all connected cells with selected region';
+    return 'Select a region below, then tap cells to assign';
+  };
+
+  const getBannerColors = () => {
+    if (isRemoveCellMode) {
+      return {
+        bg: `${colors.danger.default}20`,
+        border: `${colors.danger.default}40`,
+        text: colors.danger.default,
+      };
+    }
+    if (isPaintBucketMode) {
+      const regionColor = selectedRegion?.color ?? colors.primary.default;
+      return {
+        bg: `${regionColor}20`,
+        border: `${regionColor}40`,
+        text: regionColor,
+      };
+    }
+    return {
+      bg: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      border: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+      text: isDark ? colors.dark.textSecondary : colors.light.textSecondary,
+    };
+  };
+
+  const bannerColors = getBannerColors();
 
   return (
-    <Animated.View entering={FadeIn} className="mb-4">
+    <Animated.View entering={FadeIn} style={styles.container}>
       {/* Instructions banner */}
       <View
-        className="mx-5 mb-3 px-4 py-3 rounded-xl"
-        style={{
-          backgroundColor: isRemoveCellMode
-            ? '#EF444420'
-            : isPaintBucketMode
-              ? `${selectedRegion?.color ?? '#3B82F6'}20`
-              : isDark ? '#ffffff10' : '#00000008',
-          borderWidth: 1,
-          borderColor: isRemoveCellMode
-            ? '#EF444440'
-            : isPaintBucketMode
-              ? `${selectedRegion?.color ?? '#3B82F6'}40`
-              : isDark ? '#ffffff15' : '#00000010',
-        }}
+        style={[
+          styles.banner,
+          {
+            backgroundColor: bannerColors.bg,
+            borderColor: bannerColors.border,
+          },
+        ]}
       >
-        <Text
-          style={{
-            fontSize: 14,
-            color: isRemoveCellMode
-              ? '#EF4444'
-              : isPaintBucketMode
-                ? selectedRegion?.color ?? '#3B82F6'
-                : isDark ? '#aaa' : '#555',
-            textAlign: 'center',
-            fontWeight: '500',
-          }}
-        >
-          {isRemoveCellMode
-            ? 'Tap cells to remove them from the grid'
-            : isPaintBucketMode
-              ? 'Tap to fill all connected cells with selected region'
-              : 'Select a region below, then tap cells to assign'}
+        <Text style={[styles.bannerText, { color: bannerColors.text }]}>
+          {getInstructionText()}
         </Text>
       </View>
 
@@ -348,11 +437,8 @@ export function EditToolbar({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingBottom: 8,
-        }}
-        style={{ flexGrow: 0 }}
+        contentContainerStyle={styles.regionScroll}
+        style={styles.regionScrollContainer}
       >
         {regions.map((region) => (
           <RegionChip
@@ -369,31 +455,30 @@ export function EditToolbar({
 
       {/* Collapsible tools header */}
       <Pressable
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          setShowTools(!showTools);
-        }}
+        onPress={handleToggleTools}
         accessibilityLabel={showTools ? 'Hide tools' : 'Show tools'}
+        accessibilityHint="Double tap to toggle tool visibility"
         accessibilityRole="button"
-        className="flex-row items-center justify-center py-2 mx-5"
+        accessibilityState={{ expanded: showTools }}
+        style={styles.toolsToggle}
       >
-        <Text style={{ fontSize: 13, color: isDark ? '#666' : '#999', marginRight: 4 }}>
+        <Text style={[styles.toolsToggleText, { color: isDark ? colors.dark.textTertiary : colors.light.textTertiary }]}>
           {showTools ? 'Tools' : 'Show Tools'}
         </Text>
         {showTools ? (
-          <ChevronUp size={14} color={isDark ? '#666' : '#999'} />
+          <ChevronUp size={14} color={isDark ? colors.dark.textTertiary : colors.light.textTertiary} />
         ) : (
-          <ChevronDown size={14} color={isDark ? '#666' : '#999'} />
+          <ChevronDown size={14} color={isDark ? colors.dark.textTertiary : colors.light.textTertiary} />
         )}
       </Pressable>
 
       {/* Grid tools - collapsible */}
       {showTools && (
-        <Animated.View entering={FadeIn} className="px-5">
+        <Animated.View entering={FadeIn} style={styles.toolsContainer}>
           {/* Undo/Redo row */}
-          <View className="flex-row justify-center gap-3 mb-2">
+          <View style={styles.toolRow}>
             <ToolButton
-              icon={<Undo2 size={18} color={canUndo ? (isDark ? '#ccc' : '#555') : (isDark ? '#444' : '#ccc')} />}
+              icon={<Undo2 size={sizing.iconSm} color={canUndo ? (isDark ? colors.dark.textSecondary : colors.light.textSecondary) : (isDark ? colors.dark.textTertiary : colors.light.textTertiary)} />}
               label="Undo"
               onPress={onUndo ?? (() => {})}
               isDark={isDark}
@@ -403,7 +488,7 @@ export function EditToolbar({
               accessibilityLabel={canUndo ? 'Undo last action' : 'Nothing to undo'}
             />
             <ToolButton
-              icon={<Redo2 size={18} color={canRedo ? (isDark ? '#ccc' : '#555') : (isDark ? '#444' : '#ccc')} />}
+              icon={<Redo2 size={sizing.iconSm} color={canRedo ? (isDark ? colors.dark.textSecondary : colors.light.textSecondary) : (isDark ? colors.dark.textTertiary : colors.light.textTertiary)} />}
               label="Redo"
               onPress={onRedo ?? (() => {})}
               isDark={isDark}
@@ -415,34 +500,37 @@ export function EditToolbar({
           </View>
 
           {/* Grid tools row */}
-          <View className="flex-row justify-center gap-3">
+          <View style={styles.toolRow}>
             <ToolButton
-              icon={<Grid3X3 size={18} color={isDark ? '#ccc' : '#555'} />}
+              icon={<Grid3X3 size={sizing.iconSm} color={isDark ? colors.dark.textSecondary : colors.light.textSecondary} />}
               label="Grid Size"
               onPress={onGridSize}
               isDark={isDark}
               small
               accessibilityLabel="Change grid size"
+              accessibilityHint="Double tap to resize the puzzle grid"
             />
             <ToolButton
-              icon={<PaintBucket size={18} color={paintBucketColor} />}
+              icon={<PaintBucket size={sizing.iconSm} color={paintBucketColor} />}
               label="Fill"
               onPress={onTogglePaintBucketMode ?? (() => {})}
               isDark={isDark}
               small
               isActive={isPaintBucketMode}
-              activeColor={selectedRegion?.color ?? '#3B82F6'}
+              activeColor={selectedRegion?.color ?? colors.primary.default}
               accessibilityLabel={isPaintBucketMode ? 'Disable paint bucket mode' : 'Enable paint bucket mode'}
+              accessibilityHint="Fills connected cells with the selected region"
             />
             <ToolButton
-              icon={<Trash2 size={18} color={isRemoveCellMode ? '#fff' : '#EF4444'} />}
+              icon={<Trash2 size={sizing.iconSm} color={isRemoveCellMode ? '#FFFFFF' : colors.danger.default} />}
               label="Remove"
               onPress={onToggleRemoveCellMode ?? (() => {})}
               isDark={isDark}
               small
               isActive={isRemoveCellMode}
-              activeColor="#EF4444"
+              activeColor={colors.danger.default}
               accessibilityLabel={isRemoveCellMode ? 'Disable remove mode' : 'Enable remove mode'}
+              accessibilityHint="Removes cells from the grid when tapped"
             />
           </View>
         </Animated.View>
@@ -450,3 +538,50 @@ export function EditToolbar({
     </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    marginBottom: spacing.lg,
+  },
+  banner: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: sizing.radiusLg,
+    borderWidth: 1,
+  },
+  bannerText: {
+    fontSize: typography.sm,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  regionScrollContainer: {
+    flexGrow: 0,
+  },
+  regionScroll: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  toolsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: sizing.touchTarget,
+    paddingVertical: spacing.sm,
+    marginHorizontal: spacing.xl,
+  },
+  toolsToggleText: {
+    fontSize: typography.xs,
+    marginRight: spacing.xs,
+  },
+  toolsContainer: {
+    paddingHorizontal: spacing.xl,
+  },
+  toolRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+});

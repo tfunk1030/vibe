@@ -62,13 +62,15 @@ function ModeButton({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 12,
-          paddingVertical: 8,
+          minHeight: 44,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
           borderRadius: 8,
           backgroundColor: isActive ? activeColor : inactiveColor,
           gap: 4,
         }}
         accessibilityLabel={`${label} mode`}
+        accessibilityHint={`Select ${label} mode for solving`}
         accessibilityRole="radio"
         accessibilityState={{ checked: isActive }}
       >
@@ -93,7 +95,11 @@ export function SolveModeSelector({
   isDark,
 }: SolveModeSelectorProps) {
   return (
-    <View className="flex-row justify-center gap-2">
+    <View
+      className="flex-row justify-center gap-2"
+      accessibilityRole="radiogroup"
+      accessibilityLabel="Solve mode selection"
+    >
       {MODES.map(({ mode, label, Icon }) => (
         <ModeButton
           key={mode}

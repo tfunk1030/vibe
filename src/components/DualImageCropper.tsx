@@ -518,7 +518,10 @@ export function DualImageCropper({
           onPress={onConfirm}
           disabled={isProcessing}
           className="py-4 rounded-xl items-center flex-row justify-center"
-          style={{ backgroundColor: '#3B82F6' }}
+          style={{ backgroundColor: '#3B82F6', minHeight: 56 }}
+          accessibilityLabel={isProcessing ? "Processing crop" : "Confirm crop"}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isProcessing }}
         >
           {isProcessing ? (
             <ActivityIndicator color="#fff" />
@@ -588,7 +591,10 @@ export function DualImageCropper({
         <Pressable
           onPress={handleReset}
           className="flex-1 py-4 rounded-xl items-center flex-row justify-center"
-          style={{ backgroundColor: isDark ? '#333' : '#e5e5e5' }}
+          style={{ backgroundColor: isDark ? '#333' : '#e5e5e5', minHeight: 56 }}
+          accessibilityLabel="Redo crop"
+          accessibilityHint="Start cropping again from the beginning"
+          accessibilityRole="button"
         >
           <RefreshCw size={20} color={isDark ? '#fff' : '#333'} />
           <Text
@@ -600,7 +606,10 @@ export function DualImageCropper({
         <Pressable
           onPress={handleComplete}
           className="flex-1 py-4 rounded-xl items-center flex-row justify-center"
-          style={{ backgroundColor: '#22C55E' }}
+          style={{ backgroundColor: '#22C55E', minHeight: 56 }}
+          accessibilityLabel="Analyze puzzle"
+          accessibilityHint="Process the cropped images to extract puzzle data"
+          accessibilityRole="button"
         >
           <Check size={20} color="#fff" />
           <Text className="text-white font-bold text-base ml-2">Analyze</Text>
@@ -673,7 +682,10 @@ export function DualImageCropper({
         <Pressable
           onPress={handleReset}
           className="flex-1 py-4 rounded-xl items-center flex-row justify-center"
-          style={{ backgroundColor: isDark ? '#333' : '#e5e5e5' }}
+          style={{ backgroundColor: isDark ? '#333' : '#e5e5e5', minHeight: 56 }}
+          accessibilityLabel="Redo crop"
+          accessibilityHint="Start cropping again from the beginning"
+          accessibilityRole="button"
         >
           <RefreshCw size={20} color={isDark ? '#fff' : '#333'} />
           <Text
@@ -689,7 +701,12 @@ export function DualImageCropper({
           style={{
             backgroundColor: canComplete ? '#22C55E' : '#666',
             opacity: canComplete ? 1 : 0.5,
+            minHeight: 56,
           }}
+          accessibilityLabel="Analyze puzzle"
+          accessibilityHint="Process the cropped images to extract puzzle data"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !canComplete }}
         >
           <Check size={20} color="#fff" />
           <Text className="text-white font-bold text-base ml-2">Analyze</Text>
@@ -718,7 +735,12 @@ export function DualImageCropper({
               borderBottomColor: isDark ? '#333' : '#e0e0e0',
             }}
           >
-            <Pressable onPress={onClose} className="p-2">
+            <Pressable
+              onPress={onClose}
+              style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+              accessibilityLabel="Close cropper"
+              accessibilityRole="button"
+            >
               <X size={24} color={isDark ? '#fff' : '#333'} />
             </Pressable>
             <Text

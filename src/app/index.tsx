@@ -7,13 +7,14 @@ import {
   Alert,
   Image,
   Modal,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { colors, sizing, spacing, typography } from '@/theme/tokens';
 import { useMutation } from '@tanstack/react-query';
 import {
   Play,
@@ -761,11 +762,7 @@ export default function HomeScreen() {
   }, [editingRegionId, puzzle]);
 
   return (
-    <View className="flex-1">
-      <LinearGradient
-        colors={isDark ? ['#0f0f0f', '#1a1a2e', '#0f0f0f'] : ['#f8fafc', '#e2e8f0', '#f8fafc']}
-        style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
-      />
+    <View style={[indexStyles.container, { backgroundColor: isDark ? colors.dark.background : colors.light.background }]}>
       <SafeAreaView className="flex-1" edges={['top']}>
         <ScrollView
           className="flex-1"
@@ -787,16 +784,20 @@ export default function HomeScreen() {
                       reset();
                     }}
                     style={{
-                      padding: 12,
-                      borderRadius: 10,
-                      backgroundColor: isDark ? '#2a2a2a' : '#e5e5e5',
-                      marginRight: 12,
+                      minWidth: sizing.touchTarget,
+                      minHeight: sizing.touchTarget,
+                      padding: spacing.md,
+                      borderRadius: sizing.radiusMd,
+                      backgroundColor: isDark ? colors.dark.surfaceElevated : colors.light.border,
+                      marginRight: spacing.md,
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
-                    hitSlop={8}
                     accessibilityLabel="Return to home screen"
+                    accessibilityHint="Double tap to clear puzzle and go back"
                     accessibilityRole="button"
                   >
-                    <Home size={22} color={isDark ? '#fff' : '#666'} />
+                    <Home size={sizing.iconMd} color={isDark ? colors.dark.text : colors.light.textSecondary} />
                   </Pressable>
                 )}
                 <View className="flex-1">
@@ -818,33 +819,43 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               </View>
-              <View className="flex-row gap-2">
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                 {/* Saved Puzzles Button */}
                 <Pressable
                   onPress={handleOpenSavedPuzzles}
                   style={{
-                    padding: 12,
-                    borderRadius: 12,
-                    backgroundColor: isDark ? '#2a2a2a' : '#e5e5e5',
+                    minWidth: sizing.touchTarget,
+                    minHeight: sizing.touchTarget,
+                    padding: spacing.md,
+                    borderRadius: sizing.radiusLg,
+                    backgroundColor: isDark ? colors.dark.surfaceElevated : colors.light.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                   accessibilityLabel="Open saved puzzles"
+                  accessibilityHint="Double tap to browse your saved puzzles"
                   accessibilityRole="button"
                 >
-                  <FolderOpen size={24} color={isDark ? '#fff' : '#666'} />
+                  <FolderOpen size={sizing.iconLg} color={isDark ? colors.dark.text : colors.light.textSecondary} />
                 </Pressable>
                 {/* Save Button */}
                 {puzzle && !isEditMode && (
                   <Pressable
                     onPress={() => setShowSaveModal(true)}
                     style={{
-                      padding: 12,
-                      borderRadius: 12,
-                      backgroundColor: currentSavedPuzzleId ? '#22C55E' : '#3B82F6',
+                      minWidth: sizing.touchTarget,
+                      minHeight: sizing.touchTarget,
+                      padding: spacing.md,
+                      borderRadius: sizing.radiusLg,
+                      backgroundColor: currentSavedPuzzleId ? colors.success.default : colors.primary.default,
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                     accessibilityLabel={currentSavedPuzzleId ? "Update saved puzzle" : "Save puzzle"}
+                    accessibilityHint="Double tap to save this puzzle"
                     accessibilityRole="button"
                   >
-                    <Save size={24} color="#fff" />
+                    <Save size={sizing.iconLg} color="#FFFFFF" />
                   </Pressable>
                 )}
                 {/* Edit Button */}
@@ -852,17 +863,22 @@ export default function HomeScreen() {
                   <Pressable
                     onPress={handleToggleEditMode}
                     style={{
-                      padding: 12,
-                      borderRadius: 12,
-                      backgroundColor: isEditMode ? '#F59E0B' : isDark ? '#2a2a2a' : '#e5e5e5',
+                      minWidth: sizing.touchTarget,
+                      minHeight: sizing.touchTarget,
+                      padding: spacing.md,
+                      borderRadius: sizing.radiusLg,
+                      backgroundColor: isEditMode ? colors.warning.default : isDark ? colors.dark.surfaceElevated : colors.light.border,
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                     accessibilityLabel={isEditMode ? "Finish editing" : "Edit puzzle"}
+                    accessibilityHint={isEditMode ? "Double tap to exit edit mode" : "Double tap to edit puzzle data"}
                     accessibilityRole="button"
                   >
                     {isEditMode ? (
-                      <Check size={24} color="#fff" />
+                      <Check size={sizing.iconLg} color="#FFFFFF" />
                     ) : (
-                      <Pencil size={24} color={isDark ? '#fff' : '#666'} />
+                      <Pencil size={sizing.iconLg} color={isDark ? colors.dark.text : colors.light.textSecondary} />
                     )}
                   </Pressable>
                 )}
@@ -899,7 +915,6 @@ export default function HomeScreen() {
           {!puzzle && !isLoading && (
             <EmptyPuzzleState
               isDark={isDark}
-              onCamera={() => router.push('/camera')}
               onUpload={handlePickImage}
               onSample={handleUseSample}
               onLShapedPuzzle={handleUseLShapedPuzzle}
@@ -1105,40 +1120,37 @@ export default function HomeScreen() {
         onRequestClose={() => setShowReferenceImage(false)}
       >
         <Pressable
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}
+          style={[indexStyles.modalOverlay, { backgroundColor: colors.dark.overlay }]}
           onPress={() => setShowReferenceImage(false)}
+          accessibilityLabel="Close reference image"
+          accessibilityHint="Tap anywhere to dismiss"
+          accessibilityRole="button"
         >
-          <SafeAreaView className="flex-1 w-full">
-            <View className="flex-row justify-between items-center px-5 py-4">
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>
+          <SafeAreaView style={indexStyles.modalSafeArea}>
+            <View style={indexStyles.modalHeader}>
+              <Text style={indexStyles.modalTitle}>
                 Reference Screenshot
               </Text>
               <Pressable
                 onPress={() => setShowReferenceImage(false)}
-                style={{
-                  padding: 8,
-                  borderRadius: 8,
-                  backgroundColor: 'rgba(255,255,255,0.1)',
-                }}
+                style={indexStyles.modalCloseButton}
+                accessibilityLabel="Close"
+                accessibilityRole="button"
               >
-                <X size={24} color="#fff" />
+                <X size={sizing.iconLg} color={colors.dark.text} />
               </Pressable>
             </View>
-            <View className="flex-1 items-center justify-center px-4">
+            <View style={indexStyles.modalContent}>
               {imageUri && (
                 <Image
                   source={{ uri: imageUri }}
-                  style={{
-                    width: '100%',
-                    height: '80%',
-                    borderRadius: 12,
-                  }}
+                  style={indexStyles.referenceImage}
                   resizeMode="contain"
+                  accessibilityLabel="Original puzzle screenshot"
                 />
               )}
             </View>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', paddingBottom: 20, fontSize: 13 }}>
+            <Text style={indexStyles.modalHint}>
               Tap anywhere to close
             </Text>
           </SafeAreaView>
@@ -1160,105 +1172,62 @@ export default function HomeScreen() {
             setShowIslandModeChoice(false);
             setPendingImageUri(null);
           }}
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-          }}
+          style={[indexStyles.dialogOverlay, { backgroundColor: isDark ? colors.dark.overlay : colors.light.overlay }]}
+          accessibilityLabel="Cancel puzzle type selection"
+          accessibilityRole="button"
         >
           <Pressable
             onPress={() => {}}
-            style={{
-              backgroundColor: isDark ? '#1a1a1a' : '#fff',
-              borderRadius: 20,
-              padding: 24,
-              width: '100%',
-              maxWidth: 340,
-            }}
+            style={[
+              indexStyles.dialogBox,
+              { backgroundColor: isDark ? colors.dark.surface : colors.light.surface },
+            ]}
           >
             <Text
-              style={{
-                fontSize: 20,
-                fontWeight: '700',
-                color: isDark ? '#fff' : '#000',
-                textAlign: 'center',
-                marginBottom: 8,
-              }}
+              style={[indexStyles.dialogTitle, { color: isDark ? colors.dark.text : colors.light.text }]}
+              accessibilityRole="header"
             >
               Puzzle Type
             </Text>
             <Text
-              style={{
-                fontSize: 14,
-                color: isDark ? '#888' : '#666',
-                textAlign: 'center',
-                marginBottom: 20,
-              }}
+              style={[indexStyles.dialogMessage, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}
             >
               Does this puzzle have multiple separate islands?
             </Text>
 
             <Pressable
               onPress={handleSingleIsland}
-              style={{
-                backgroundColor: '#3B82F6',
-                paddingVertical: 14,
-                borderRadius: 12,
-                marginBottom: 12,
-              }}
+              style={[indexStyles.choiceButton, { backgroundColor: colors.primary.default }]}
+              accessibilityLabel="Single grid puzzle"
+              accessibilityHint="Standard puzzle with one connected area"
+              accessibilityRole="button"
             >
-              <Text
-                style={{
-                  color: '#fff',
-                  fontWeight: '600',
-                  fontSize: 16,
-                  textAlign: 'center',
-                }}
-              >
+              <Text style={indexStyles.choiceButtonTitle}>
                 Single Grid
               </Text>
-              <Text
-                style={{
-                  color: 'rgba(255,255,255,0.7)',
-                  fontSize: 12,
-                  textAlign: 'center',
-                  marginTop: 2,
-                }}
-              >
+              <Text style={indexStyles.choiceButtonSubtitle}>
                 Standard puzzle with one connected area
               </Text>
             </Pressable>
 
             <Pressable
               onPress={handleMultipleIslands}
-              style={{
-                backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0',
-                paddingVertical: 14,
-                borderRadius: 12,
-                borderWidth: 2,
-                borderColor: '#8B5CF6',
-              }}
+              style={[
+                indexStyles.choiceButton,
+                {
+                  backgroundColor: isDark ? colors.dark.surfaceElevated : colors.light.border,
+                  borderWidth: 2,
+                  borderColor: colors.success.default,
+                },
+              ]}
+              accessibilityLabel="Multiple islands puzzle"
+              accessibilityHint="Separate grids sharing one domino pool"
+              accessibilityRole="button"
             >
-              <Text
-                style={{
-                  color: isDark ? '#fff' : '#333',
-                  fontWeight: '600',
-                  fontSize: 16,
-                  textAlign: 'center',
-                }}
-              >
+              <Text style={[indexStyles.choiceButtonTitle, { color: isDark ? colors.dark.text : colors.light.text }]}>
                 Multiple Islands
               </Text>
-              <Text
-                style={{
-                  color: isDark ? '#888' : '#666',
-                  fontSize: 12,
-                  textAlign: 'center',
-                  marginTop: 2,
-                }}
-              >
+              <Text style={[indexStyles.choiceButtonSubtitle, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}>
                 Separate grids sharing one domino pool
               </Text>
             </Pressable>
@@ -1318,63 +1287,41 @@ export default function HomeScreen() {
       >
         <Pressable
           onPress={() => setShowClearConfirm(false)}
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-          }}
+          style={[indexStyles.dialogOverlay, { backgroundColor: isDark ? colors.dark.overlay : colors.light.overlay }]}
+          accessibilityLabel="Cancel clear"
+          accessibilityRole="button"
         >
           <Pressable
             onPress={() => {}}
-            style={{
-              backgroundColor: isDark ? '#1a1a1a' : '#fff',
-              borderRadius: 20,
-              padding: 24,
-              width: '100%',
-              maxWidth: 340,
-            }}
+            style={[
+              indexStyles.dialogBox,
+              { backgroundColor: isDark ? colors.dark.surface : colors.light.surface },
+            ]}
           >
             <Text
-              style={{
-                fontSize: 20,
-                fontWeight: '700',
-                color: isDark ? '#fff' : '#000',
-                textAlign: 'center',
-                marginBottom: 8,
-              }}
+              style={[indexStyles.dialogTitle, { color: isDark ? colors.dark.text : colors.light.text }]}
+              accessibilityRole="header"
             >
               Clear All?
             </Text>
             <Text
-              style={{
-                fontSize: 14,
-                color: isDark ? '#888' : '#666',
-                textAlign: 'center',
-                marginBottom: 20,
-              }}
+              style={[indexStyles.dialogMessage, { color: isDark ? colors.dark.textSecondary : colors.light.textSecondary }]}
             >
               This will remove the current puzzle and all edits. This cannot be undone.
             </Text>
 
-            <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={indexStyles.dialogButtons}>
               <Pressable
                 onPress={() => setShowClearConfirm(false)}
-                style={{
-                  flex: 1,
-                  backgroundColor: isDark ? '#2a2a2a' : '#f0f0f0',
-                  paddingVertical: 14,
-                  borderRadius: 12,
-                }}
+                style={[
+                  indexStyles.dialogButton,
+                  { backgroundColor: isDark ? colors.dark.surfaceElevated : colors.light.border },
+                ]}
+                accessibilityLabel="Cancel"
+                accessibilityRole="button"
               >
                 <Text
-                  style={{
-                    color: isDark ? '#fff' : '#333',
-                    fontWeight: '600',
-                    fontSize: 16,
-                    textAlign: 'center',
-                  }}
+                  style={[indexStyles.dialogButtonText, { color: isDark ? colors.dark.text : colors.light.text }]}
                 >
                   Cancel
                 </Text>
@@ -1382,21 +1329,12 @@ export default function HomeScreen() {
 
               <Pressable
                 onPress={handleConfirmClear}
-                style={{
-                  flex: 1,
-                  backgroundColor: '#EF4444',
-                  paddingVertical: 14,
-                  borderRadius: 12,
-                }}
+                style={[indexStyles.dialogButton, { backgroundColor: colors.danger.default }]}
+                accessibilityLabel="Confirm clear all"
+                accessibilityHint="Double tap to permanently delete puzzle"
+                accessibilityRole="button"
               >
-                <Text
-                  style={{
-                    color: '#fff',
-                    fontWeight: '600',
-                    fontSize: 16,
-                    textAlign: 'center',
-                  }}
-                >
+                <Text style={[indexStyles.dialogButtonText, { color: '#FFFFFF' }]}>
                   Clear All
                 </Text>
               </Pressable>
@@ -1407,3 +1345,119 @@ export default function HomeScreen() {
     </View>
   );
 }
+
+const indexStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  // Reference Image Modal
+  modalOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSafeArea: {
+    flex: 1,
+    width: '100%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+  },
+  modalTitle: {
+    color: colors.dark.text,
+    fontSize: typography.lg,
+    fontWeight: '700',
+  },
+  modalCloseButton: {
+    minWidth: sizing.touchTarget,
+    minHeight: sizing.touchTarget,
+    padding: spacing.sm,
+    borderRadius: sizing.radiusMd,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  referenceImage: {
+    width: '100%',
+    height: '80%',
+    borderRadius: sizing.radiusLg,
+  },
+  modalHint: {
+    color: colors.dark.textTertiary,
+    textAlign: 'center',
+    paddingBottom: spacing.xl,
+    fontSize: typography.sm,
+  },
+  // Dialog styles (used by Clear Confirm and Island Choice modals)
+  dialogOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  dialogBox: {
+    borderRadius: sizing.radiusXl,
+    padding: spacing['2xl'],
+    width: '100%',
+    maxWidth: 340,
+  },
+  dialogTitle: {
+    fontSize: typography.xl,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  dialogMessage: {
+    fontSize: typography.sm,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+    lineHeight: 20,
+  },
+  dialogButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  dialogButton: {
+    flex: 1,
+    minHeight: sizing.touchTarget,
+    paddingVertical: spacing.md,
+    borderRadius: sizing.radiusMd,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogButtonText: {
+    fontWeight: '600',
+    fontSize: typography.base,
+  },
+  // Choice button styles (for Island Mode Choice)
+  choiceButton: {
+    minHeight: sizing.touchTargetPrimary,
+    paddingVertical: spacing.md,
+    borderRadius: sizing.radiusMd,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  choiceButtonTitle: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: typography.base,
+    textAlign: 'center',
+  },
+  choiceButtonSubtitle: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: typography.xs,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+});
