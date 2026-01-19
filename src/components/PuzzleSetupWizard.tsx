@@ -363,8 +363,10 @@ export function PuzzleSetupWizard({
         const aspectRatio = w / h;
         let displayWidth = IMAGE_CONTAINER_WIDTH;
         let displayHeight = displayWidth / aspectRatio;
-        // Increased max height for better visibility during cropping
-        const maxHeight = 500;
+        // Dynamic max height based on screen size minus UI chrome
+        const windowHeight = Dimensions.get('window').height;
+        const chromeHeight = 180; // header + size hints + button + padding
+        const maxHeight = windowHeight - chromeHeight;
         if (displayHeight > maxHeight) {
           displayHeight = maxHeight;
           displayWidth = displayHeight * aspectRatio;
@@ -739,21 +741,21 @@ export function PuzzleSetupWizard({
     icon: React.ReactNode
   ) => (
     <Animated.View entering={FadeInRight} className="flex-1">
-      {/* Header with title and size hints */}
-      <View className="flex-row items-center px-5 py-3">
-        <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#3B82F620', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+      {/* Compact header with title */}
+      <View className="flex-row items-center px-5 py-2">
+        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#3B82F620', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
           {icon}
         </View>
         <View className="flex-1">
-          <Text style={{ fontSize: 18, fontWeight: '700', color: isDark ? '#fff' : '#000' }}>{title}</Text>
-          <Text style={{ fontSize: 13, color: isDark ? '#888' : '#666' }}>{subtitle}</Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#fff' : '#000' }}>{title}</Text>
+          <Text style={{ fontSize: 12, color: isDark ? '#888' : '#666' }}>{subtitle}</Text>
         </View>
         {/* Reference thumbnail */}
         <Pressable
           onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
           style={{
-            minWidth: 50,
-            minHeight: 50,
+            width: 40,
+            height: 40,
             borderRadius: 8,
             overflow: 'hidden',
             borderWidth: 2,
@@ -773,13 +775,13 @@ export function PuzzleSetupWizard({
         </Pressable>
       </View>
       
-      {/* Size hints bar */}
-      <View style={{ 
-        flexDirection: 'row', 
-        justifyContent: 'center', 
-        gap: 12, 
-        paddingHorizontal: 20, 
-        paddingBottom: 8 
+      {/* Size hints bar - compact */}
+      <View style={{
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingBottom: 4
       }}>
         <View style={{ 
           flexDirection: 'row', 
