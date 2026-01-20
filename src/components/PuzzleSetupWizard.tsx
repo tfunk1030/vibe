@@ -226,7 +226,7 @@ function CropBox({
   const y = useSharedValue(region.y);
   const width = useSharedValue(region.width);
   const height = useSharedValue(region.height);
-  const MIN_SIZE = 50;
+  const MIN_SIZE = 80; // Larger minimum for easier interaction
 
   const updateRegion = useCallback(() => {
     onRegionChange({ x: x.value, y: y.value, width: width.value, height: height.value });
@@ -241,6 +241,7 @@ function CropBox({
     .onEnd(() => runOnJS(updateRegion)());
 
   const resizeGesture = Gesture.Pan()
+    .hitSlop({ top: 12, bottom: 12, left: 12, right: 12 }) // Larger hit area for easier grabbing
     .onStart(() => { startWidth.value = width.value; startHeight.value = height.value; })
     .onUpdate((e) => {
       width.value = Math.max(MIN_SIZE, Math.min(containerWidth - x.value, startWidth.value + e.translationX));
@@ -374,23 +375,40 @@ export function PuzzleSetupWizard({
         setImageDimensions({ width: w, height: h, displayWidth, displayHeight });
 
         // Better default crop positions based on typical NYT Pips layout
-        // Dominoes are usually at the bottom ~25% of the image
+        // Domino tray is at the bottom of NYT screenshots - wide but short
         setDominoCropRegion({
-          x: displayWidth * 0.1,
-          y: displayHeight * 0.72,
-          width: displayWidth * 0.8,
-          height: displayHeight * 0.24,
+          x: displayWidth * 0.08,        // 8% from left (tighter)
+          y: displayHeight * 0.70,       // 70% down
+          width: displayWidth * 0.84,    // 84% width (domino trays are wide)
+          height: displayHeight * 0.22,  // 22% height (trays are short)
         });
-        // Grid is usually in the top ~60% of the image
+        // Grid is center of NYT screenshots, typically narrower than full width
         setGridCropRegion({
-          x: displayWidth * 0.15,
-          y: displayHeight * 0.12,
-          width: displayWidth * 0.7,
-          height: displayHeight * 0.52,
+          x: displayWidth * 0.18,        // 18% from left (centered better)
+          y: displayHeight * 0.15,       // 15% down (below app chrome)
+          width: displayWidth * 0.64,    // 64% width (typical grid is narrower)
+          height: displayHeight * 0.48,  // 48% height
         });
       });
     }
   }, [visible, sourceImageUri]);
+
+  // Recalculate island regions when image dimensions become available
+  useEffect(() => {
+    if (imageDimensions && isMultiIsland && islandConfigs.length > 0) {
+      const { displayWidth, displayHeight } = imageDimensions;
+      // Only recalculate if regions seem like they still have placeholder values
+      const firstRegion = islandCropRegions[0];
+      if (firstRegion && firstRegion.width <= 200 && firstRegion.height <= 200) {
+        setIslandCropRegions(islandConfigs.map((_, index) => ({
+          x: displayWidth * 0.15,
+          y: displayHeight * (0.12 + index * 0.02), // Stagger slightly
+          width: displayWidth * 0.70,
+          height: displayHeight * 0.45,
+        })));
+      }
+    }
+  }, [imageDimensions, isMultiIsland, islandConfigs.length]);
 
   // Auto-detect dimensions
   const handleAutoDetect = useCallback(async () => {
@@ -445,14 +463,24 @@ export function PuzzleSetupWizard({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsMultiIsland(multi);
     if (multi) {
-      setIslandConfigs([
+      const configs = [
         { id: 'island-1', cols: 5, rows: 5 },
         { id: 'island-2', cols: 5, rows: 5 },
-      ]);
-      setIslandCropRegions([
-        { x: 20, y: 20, width: 150, height: 150 },
-        { x: 20, y: 20, width: 150, height: 150 },
-      ]);
+      ];
+      setIslandConfigs(configs);
+      // Create percentage-based regions if imageDimensions is available
+      if (imageDimensions) {
+        const { displayWidth, displayHeight } = imageDimensions;
+        setIslandCropRegions(configs.map((_, index) => ({
+          x: displayWidth * 0.15,
+          y: displayHeight * (0.12 + index * 0.02), // Stagger slightly
+          width: displayWidth * 0.70,
+          height: displayHeight * 0.45,
+        })));
+      } else {
+        // Temporary placeholder - will be recalculated when dimensions load
+        setIslandCropRegions(configs.map(() => ({ x: 20, y: 20, width: 200, height: 200 })));
+      }
       setGridImageUris([]);
       setCurrentIslandIndex(0);
     }
@@ -464,15 +492,27 @@ export function PuzzleSetupWizard({
     }
     setStep('size');
     handleAutoDetect();
-  }, [handleAutoDetect]);
+  }, [handleAutoDetect, imageDimensions]);
 
   const handleUpdateIslands = useCallback((configs: IslandConfig[]) => {
     setIslandConfigs(configs);
-    setIslandCropRegions(configs.map(() => ({ x: 20, y: 20, width: 150, height: 150 })));
+    // Create percentage-based regions if imageDimensions is available
+    if (imageDimensions) {
+      const { displayWidth, displayHeight } = imageDimensions;
+      setIslandCropRegions(configs.map((_, index) => ({
+        x: displayWidth * 0.15,
+        y: displayHeight * (0.12 + index * 0.02), // Stagger slightly
+        width: displayWidth * 0.70,
+        height: displayHeight * 0.45,
+      })));
+    } else {
+      // Temporary placeholder
+      setIslandCropRegions(configs.map(() => ({ x: 20, y: 20, width: 200, height: 200 })));
+    }
     setGridImageUris([]);
     setCurrentIslandIndex(0);
     setShowIslandConfig(false);
-  }, []);
+  }, [imageDimensions]);
 
   const handleSizeNext = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -811,12 +851,12 @@ export function PuzzleSetupWizard({
             {dominoCount} dominoes
           </Text>
         </View>
-        <View style={{ 
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          backgroundColor: isDark ? '#4a3a2a' : '#f0e8e0', 
-          paddingHorizontal: 10, 
-          paddingVertical: 4, 
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: isDark ? '#4a3a2a' : '#f0e8e0',
+          paddingHorizontal: 10,
+          paddingVertical: 4,
           borderRadius: 8,
           gap: 4,
         }}>
@@ -825,6 +865,24 @@ export function PuzzleSetupWizard({
             {dominoCount * 2} cells
           </Text>
         </View>
+      </View>
+
+      {/* Visual hint banner */}
+      <View style={{
+        marginHorizontal: 16,
+        marginBottom: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.2)',
+      }}>
+        <Text style={{ color: '#3B82F6', fontSize: 12, textAlign: 'center', fontWeight: '500' }}>
+          {step === 'crop-domino'
+            ? '💡 Include all dominoes from edge to edge'
+            : '💡 Crop tightly around the numbered grid only'}
+        </Text>
       </View>
 
       {imageDimensions && (
@@ -1001,7 +1059,7 @@ export function PuzzleSetupWizard({
           {step === 'size' && renderSizeStep()}
           {step === 'crop-domino' && renderCropStep(
             'Crop Domino Tray',
-            'Select the area with dominoes',
+            'Drag box to cover ALL domino tiles. Include entire tray edge-to-edge.',
             dominoCropRegion,
             setDominoCropRegion,
             handleCropDomino,
@@ -1011,7 +1069,7 @@ export function PuzzleSetupWizard({
             isMultiIsland && islandCropRegions[currentIslandIndex]
               ? renderCropStep(
                   `Crop Island ${currentIslandIndex + 1}`,
-                  `Select grid ${currentIslandIndex + 1} of ${islandConfigs.length}`,
+                  `Drag to cover island ${currentIslandIndex + 1} of ${islandConfigs.length}. Crop each island separately.`,
                   islandCropRegions[currentIslandIndex],
                   (r) => {
                     const updated = [...islandCropRegions];
@@ -1023,7 +1081,7 @@ export function PuzzleSetupWizard({
                 )
               : renderCropStep(
                   'Crop Puzzle Grid',
-                  'Select the puzzle area',
+                  'Drag box to cover ONLY the numbered grid. Exclude dominoes and buttons.',
                   gridCropRegion,
                   setGridCropRegion,
                   handleCropGrid,

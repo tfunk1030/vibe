@@ -90,7 +90,7 @@ function CropBox({
   const width = useSharedValue(region.width);
   const height = useSharedValue(region.height);
 
-  const MIN_SIZE = 50;
+  const MIN_SIZE = 80; // Larger minimum for easier interaction
 
   const updateRegion = useCallback(() => {
     onRegionChange({
@@ -119,6 +119,7 @@ function CropBox({
 
   // Resize gesture for bottom-right corner
   const resizeGesture = Gesture.Pan()
+    .hitSlop({ top: 12, bottom: 12, left: 12, right: 12 }) // Larger hit area for easier grabbing
     .onStart(() => {
       startWidth.value = width.value;
       startHeight.value = height.value;
@@ -291,31 +292,29 @@ export function DualImageCropper({
         });
 
         // Set default crop regions optimized for NYT Pips layout
-        // NYT puzzles have consistent layout: grid top ~60%, domino tray bottom ~35%
-
-        // Domino tray - positioned for NYT's bottom tray area
+        // Domino tray is at the bottom of NYT screenshots - wide but short
         setDominoCropRegion({
-          x: displayWidth * 0.05,
-          y: displayHeight * 0.68,
-          width: displayWidth * 0.9,
-          height: displayHeight * 0.28,
+          x: displayWidth * 0.08,        // 8% from left (tighter)
+          y: displayHeight * 0.70,       // 70% down
+          width: displayWidth * 0.84,    // 84% width (domino trays are wide)
+          height: displayHeight * 0.22,  // 22% height (trays are short)
         });
 
-        // Grid - positioned with room for NYT app header (for single island)
+        // Grid is center of NYT screenshots, typically narrower than full width
         setGridCropRegion({
-          x: displayWidth * 0.05,
-          y: displayHeight * 0.08,
-          width: displayWidth * 0.9,
-          height: displayHeight * 0.55,
+          x: displayWidth * 0.18,        // 18% from left (centered better)
+          y: displayHeight * 0.15,       // 15% down (below app chrome)
+          width: displayWidth * 0.64,    // 64% width (typical grid is narrower)
+          height: displayHeight * 0.48,  // 48% height
         });
 
         // Multi-island: initialize crop regions for each island
         if (isMultiIsland && islandConfigs) {
           const regions: CropRegion[] = islandConfigs.map((_, i) => ({
-            x: displayWidth * 0.1,
-            y: displayHeight * 0.1,
-            width: displayWidth * 0.8,
-            height: displayHeight * 0.5,
+            x: displayWidth * 0.15,
+            y: displayHeight * (0.12 + i * 0.02), // Stagger slightly
+            width: displayWidth * 0.70,
+            height: displayHeight * 0.45,
           }));
           setIslandCropRegions(regions);
         }
