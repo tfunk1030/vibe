@@ -85,6 +85,24 @@ export default function HomeScreen() {
     },
   });
 
+  const extractMultiMutation = useMutation({
+    mutationFn: (params: { dominoUri: string; gridUris: string[]; configs: IslandConfig[] }) =>
+      extractMultiIslandPuzzle(params.dominoUri, params.gridUris, params.configs, (stage, idx) => setExtractionStage(stage)),
+    onSuccess: (data) => {
+      setPuzzle(data);
+      const sol = solvePuzzle(data);
+      setSolution(sol);
+      setLoading(false);
+      setExtractionStage('idle');
+    },
+    onError: (err: Error) => {
+      setError(err.message);
+      setLoading(false);
+      setExtractionStage('idle');
+      Alert.alert('Extraction Failed', err.message);
+    },
+  });
+
   const handlePickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -101,6 +119,12 @@ export default function HomeScreen() {
     setShowSetupWizard(false);
     setLoading(true);
     extractDualMutation.mutate({ dominoUri, gridUri, sizeHint });
+  };
+
+  const handleWizardMultiComplete = (dominoUri: string, gridUris: string[], configs: IslandConfig[]) => {
+    setShowSetupWizard(false);
+    setLoading(true);
+    extractMultiMutation.mutate({ dominoUri, gridUris, configs });
   };
 
   const handleUseSample = () => {
