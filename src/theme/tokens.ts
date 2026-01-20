@@ -6,11 +6,11 @@
  */
 
 export const colors = {
-  // Primary actions - blue
+  // Primary actions - teal
   primary: {
-    default: '#3B82F6',
-    pressed: '#2563EB',
-    disabled: '#93C5FD',
+    default: '#0D9488',
+    pressed: '#0F766E',
+    disabled: '#99F6E4',
   },
 
   // Warning/caution - amber
